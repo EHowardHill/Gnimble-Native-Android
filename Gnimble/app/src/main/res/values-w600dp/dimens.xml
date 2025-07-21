@@ -1,3 +1,5 @@
 <resources>
     <dimen name="fab_margin">48dp</dimen>
+    <dimen name="scrollview_margin_top">32dp</dimen>
+    <dimen name="scrollview_padding">64dp</dimen>
 </resources>
