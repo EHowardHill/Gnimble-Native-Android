@@ -1,0 +1,35 @@
+<resources>
+    <string name="app_name">Gnimble</string>
+    <string name="action_settings">Settings</string>
+    <string name="next">Next</string>
+    <string name="previous">Previous</string>
+    <string name="bold">Bold</string>
+    <string name="italic">Italic</string>
+    <string name="document_body">Document Body</string>
+    <string name="insert_image">Insert Image</string>
+    <string name="align_right">Align Right</string>
+    <string name="align_center">Align Center</string>
+    <string name="align_left">Align Left</string>
+    <string name="font_family">Font Family</string>
+    <string name="heading_style">Heading Style</string>
+    <string name="back_button_description">Return</string>
+    <string name="book_cover_image">Book Cover Image</string>
+    <string name="open">Open</string>
+    <string name="add_new_book">Create New Story</string>
+    <string name="story_title">Story Title</string>
+    <string name="create">Create</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete">Delete</string>
+    <string name="edit">Edit</string>
+    <string name="save">Save</string>
+    <string name="no_books_yet">No Books Yet</string>
+    <string name="book_title">Book Title</string>
+    <string name="subtitle">Subtitle</string>
+    <string name="share_book">Network Share</string>
+    <string name="menu_options">Options</string>
+    <string name="open_settings">Open Settings</string>
+    <string name="stop_sharing">Stop Sharing</string>
+    <string name="qr_code_for_sharing">QR Code for Sharing</string>
+    <string name="starting_server">Starting server...</string>
+    <string name="share_your_book">Share Your Story</string>
+</resources>
