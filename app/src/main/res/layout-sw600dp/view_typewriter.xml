@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- view_typewriter.xml -->
 <merge xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -12,45 +11,34 @@
         android:layout_height="0dp"
         android:layout_marginTop="@dimen/scrollview_margin_top"
         android:layout_marginBottom="32dp"
+        app:cardBackgroundColor="@color/scrollview_background"
         app:cardCornerRadius="12dp"
         app:cardElevation="8dp"
-        app:cardBackgroundColor="@color/scrollview_background"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintDimensionRatio="W,1:1"
+        app:layout_constraintDimensionRatio="W,3:4"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <!-- Blur background layer -->
         <View
             android:id="@+id/blurBackground"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="@color/scrollview_background" />
 
-        <!-- Content layer on top -->
         <ScrollView
-            android:id="@+id/scrollView"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:fillViewport="true"
-            android:padding="@dimen/scrollview_padding"
-            android:background="@android:color/transparent">
-
-            <EditText
-                android:id="@+id/editText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:autofillHints="Document body"
-                android:background="@android:color/transparent"
-                android:gravity="top"
-                android:hint="@string/document_body"
-                android:inputType="textMultiLine"
-                android:minHeight="?android:attr/listPreferredItemHeight"
-                android:padding="16dp"
-                tools:ignore="ScrollViewSize" />
-
-        </ScrollView>
+            android:padding="48dp"
+            android:scrollbars="vertical"
+            android:clipToPadding="false"> <EditText
+            android:id="@+id/editText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:autofillHints="Document body"
+            android:background="@android:color/transparent"
+            android:gravity="top"
+            android:hint="@string/document_body"
+            android:inputType="textMultiLine" /> </ScrollView>
 
     </androidx.cardview.widget.CardView>
 
