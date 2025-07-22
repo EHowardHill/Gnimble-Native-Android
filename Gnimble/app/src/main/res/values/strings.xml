@@ -32,4 +32,5 @@
     <string name="qr_code_for_sharing">QR Code for Sharing</string>
     <string name="starting_server">Starting server...</string>
     <string name="share_your_book">Share Your Story</string>
+    <string name="create_new_story">Create New Story</string>
 </resources>

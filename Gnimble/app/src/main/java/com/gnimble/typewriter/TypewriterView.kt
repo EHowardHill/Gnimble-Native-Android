@@ -14,6 +14,9 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.widget.EditText
 import android.widget.TextView
+import android.graphics.RenderEffect
+import android.graphics.Shader
+import android.os.Build
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.res.ResourcesCompat
 import com.gnimble.typewriter.databinding.ViewTypewriterBinding
@@ -33,6 +36,14 @@ class TypewriterView @JvmOverloads constructor(
         get() = binding.editText
 
     init {
+        binding.blurBackground.setRenderEffect(
+            RenderEffect.createBlurEffect(
+                25f, // radiusX
+                25f, // radiusY
+                Shader.TileMode.CLAMP
+            )
+        )
+
         // Ensure EditText uses SpannableStringBuilder
         editText.setText("", TextView.BufferType.SPANNABLE)
     }

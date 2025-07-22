@@ -9,6 +9,5 @@
     <color name="teal_700">#FF018786</color>
     <color name="surface_dark">#121212</color>
     <color name="surface_light">#FFFFFF</color>
-    <color name="error_color">#FF0000</color>
-    <color name="scrollview_background">#E6FFFFFF</color>
+    <color name="scrollview_background">#AA000000</color>
 </resources>

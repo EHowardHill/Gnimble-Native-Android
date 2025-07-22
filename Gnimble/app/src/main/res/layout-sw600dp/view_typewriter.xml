@@ -7,32 +7,51 @@
     android:layout_height="match_parent"
     tools:parentTag="androidx.constraintlayout.widget.ConstraintLayout">
 
-    <ScrollView
+    <androidx.cardview.widget.CardView
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:background="?android:attr/colorBackground"
-        android:fillViewport="true"
         android:layout_marginTop="@dimen/scrollview_margin_top"
-        android:padding="@dimen/scrollview_padding"
+        android:layout_marginBottom="32dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="8dp"
+        app:cardBackgroundColor="@color/scrollview_background"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintDimensionRatio="W,1:1"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <EditText
-            android:id="@+id/editText"
+        <!-- Blur background layer -->
+        <View
+            android:id="@+id/blurBackground"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:autofillHints="Document body"
-            android:background="@android:color/transparent"
-            android:gravity="top"
-            android:hint="@string/document_body"
-            android:inputType="textMultiLine"
-            android:minHeight="?android:attr/listPreferredItemHeight"
-            android:padding="16dp"
-            tools:ignore="ScrollViewSize" />
+            android:layout_height="match_parent"
+            android:background="@color/scrollview_background" />
 
-    </ScrollView>
+        <!-- Content layer on top -->
+        <ScrollView
+            android:id="@+id/scrollView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:padding="@dimen/scrollview_padding"
+            android:background="@android:color/transparent">
+
+            <EditText
+                android:id="@+id/editText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:autofillHints="Document body"
+                android:background="@android:color/transparent"
+                android:gravity="top"
+                android:hint="@string/document_body"
+                android:inputType="textMultiLine"
+                android:minHeight="?android:attr/listPreferredItemHeight"
+                android:padding="16dp"
+                tools:ignore="ScrollViewSize" />
+
+        </ScrollView>
+
+    </androidx.cardview.widget.CardView>
 
 </merge>

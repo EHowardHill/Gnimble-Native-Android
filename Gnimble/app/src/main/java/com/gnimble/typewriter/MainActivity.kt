@@ -2,9 +2,11 @@
 package com.gnimble.typewriter
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.provider.Settings
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -21,6 +23,19 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val viewModel: MainViewModel by viewModels()
     private lateinit var bookAdapter: BookAdapter
+    private var bookToUpdateCover: Book? = null
+
+    // Activity result launcher for picking images from gallery
+    private val pickImageLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { imageUri ->
+            bookToUpdateCover?.let { book ->
+                updateBookCover(book, imageUri)
+            }
+        }
+        bookToUpdateCover = null
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,9 +54,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerView() {
-        bookAdapter = BookAdapter { book ->
-            openBook(book)
-        }
+        bookAdapter = BookAdapter(
+            onBookClick = { book ->
+                openBook(book)
+            },
+            onRenameBook = { book, newTitle ->
+                renameBook(book, newTitle)
+            },
+            onDeleteBook = { book ->
+                deleteBook(book)
+            },
+            onChangeCover = { book ->
+                openImagePicker(book)
+            }
+        )
 
         binding.booksRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
@@ -134,5 +160,41 @@ class MainActivity : AppCompatActivity() {
             putExtra("book_title", book.title)
         }
         startActivity(intent)
+    }
+
+    private fun renameBook(book: Book, newTitle: String) {
+        // Create a copy of the book with the new title
+        val updatedBook = book.copy(title = newTitle)
+
+        // Update the book in the database
+        viewModel.update(updatedBook)
+    }
+
+    private fun deleteBook(book: Book) {
+        // Delete the book from the database
+        viewModel.delete(book)
+    }
+
+    private fun openImagePicker(book: Book) {
+        bookToUpdateCover = book
+        pickImageLauncher.launch("image/*")
+    }
+
+    private fun updateBookCover(book: Book, imageUri: Uri) {
+        // Request persistent permission for the URI
+        try {
+            contentResolver.takePersistableUriPermission(
+                imageUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (e: SecurityException) {
+            // Some URIs don't support persistent permissions, which is fine
+        }
+
+        // Save the image URI as string
+        val updatedBook = book.copy(coverPath = imageUri.toString())
+
+        // Update the book in the database
+        viewModel.update(updatedBook)
     }
 }

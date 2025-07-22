@@ -8,7 +8,7 @@ import java.util.Date
 
 @Dao
 interface BookDao {
-    @Query("SELECT * FROM books ORDER BY lastEdited DESC")
+    @Query("SELECT * FROM books ORDER BY last_edited DESC")
     fun getAllBooks(): LiveData<List<Book>>
 
     @Query("SELECT * FROM books WHERE id = :bookId")
@@ -23,6 +23,6 @@ interface BookDao {
     @Delete
     suspend fun deleteBook(book: Book)
 
-    @Query("UPDATE books SET lastEdited = :date WHERE id = :bookId")
+    @Query("UPDATE books SET last_edited = :date WHERE id = :bookId")
     suspend fun updateLastEdited(bookId: Long, date: Date)
 }
