@@ -19,6 +19,7 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import java.text.SimpleDateFormat
 import java.util.Locale
+import androidx.core.net.toUri
 
 class BookAdapter(
     private val onBookClick: (Book) -> Unit,
@@ -56,7 +57,7 @@ class BookAdapter(
             // Load cover image if available, otherwise show default
             if (!book.coverPath.isNullOrEmpty()) {
                 Glide.with(binding.bookImage.context)
-                    .load(Uri.parse(book.coverPath))
+                    .load(book.coverPath.toUri())
                     .placeholder(R.drawable.gallery_thumbnail_24px)
                     .error(R.drawable.gallery_thumbnail_24px)
                     .centerCrop()

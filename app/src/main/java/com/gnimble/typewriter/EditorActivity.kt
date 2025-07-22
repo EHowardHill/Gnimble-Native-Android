@@ -4,6 +4,8 @@ package com.gnimble.typewriter
 import android.content.Intent
 import android.graphics.Typeface
 import android.os.Bundle
+import android.text.Html
+import android.text.Spannable
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -14,7 +16,9 @@ import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.lifecycleScope
 import com.gnimble.typewriter.data.AppDatabase
 import com.gnimble.typewriter.data.Book
+import com.gnimble.typewriter.data.FontItem
 import com.gnimble.typewriter.databinding.ActivityEditorBinding
+import com.gnimble.typewriter.utils.SimpleHtmlHandler
 import kotlinx.coroutines.launch
 import java.util.Date
 
@@ -109,7 +113,7 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupHeadingDropdown() {
+    fun setupHeadingDropdown() {
         val headingNames = headingStyles.map { it.name }
         val headingAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, headingNames)
         headingAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -118,7 +122,7 @@ class EditorActivity : AppCompatActivity() {
         binding.actionHeadingSelection.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val selectedStyle = headingStyles[position]
-                binding.typewriter.setTextSize(selectedStyle.sizeFactor)
+                binding.typewriter.applyHeadingStyle(selectedStyle)
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -132,7 +136,7 @@ class EditorActivity : AppCompatActivity() {
         binding.actionFontSelection.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val selectedFont = fontList[position]
-                binding.typewriter.setFont(selectedFont)
+                binding.typewriter.applyFont(selectedFont)
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -187,25 +191,48 @@ class EditorActivity : AppCompatActivity() {
         })
     }
 
-    private fun loadBook() {
-        lifecycleScope.launch {
-            currentBook = database.bookDao().getBook(bookId)
-            currentBook?.let { book ->
-                binding.typewriter.editText.setText(book.storyContent)
-                supportActionBar?.title = book.title
-            }
-        }
-    }
-
+    // Update the saveBook function
     private fun saveBook() {
         lifecycleScope.launch {
             currentBook?.let { book ->
+                val htmlHandler = SimpleHtmlHandler(this@EditorActivity)
+                val htmlContent = htmlHandler.spannableToHtml(
+                    binding.typewriter.editText.text as Spannable
+                )
+
                 val updatedBook = book.copy(
-                    storyContent = binding.typewriter.editText.text.toString(),
+                    storyContent = htmlContent,
                     lastEdited = Date()
                 )
                 database.bookDao().updateBook(updatedBook)
                 currentBook = updatedBook
+            }
+        }
+    }
+
+    // Update the loadBook function
+    private fun loadBook() {
+        lifecycleScope.launch {
+            currentBook = database.bookDao().getBook(bookId)
+            currentBook?.let { book ->
+                try {
+                    val htmlHandler = SimpleHtmlHandler(this@EditorActivity)
+                    val spannable = htmlHandler.htmlToSpannable(book.storyContent)
+                    binding.typewriter.editText.setText(spannable)
+                    supportActionBar?.title = book.title
+                } catch (e: Exception) {
+                    // Fallback to simple HTML parsing
+                    try {
+                        val spannable = Html.fromHtml(
+                            book.storyContent,
+                            Html.FROM_HTML_MODE_COMPACT
+                        )
+                        binding.typewriter.editText.setText(spannable)
+                    } catch (e2: Exception) {
+                        // Last resort: plain text
+                        binding.typewriter.editText.setText(book.storyContent)
+                    }
+                }
             }
         }
     }

@@ -1,12 +1,9 @@
-// TypewriterView
+// TypewriterView.kt
 package com.gnimble.typewriter
 
 import android.content.Context
 import android.graphics.Typeface
-import android.text.Layout
 import android.text.Spannable
-import android.text.SpannableStringBuilder
-import android.text.style.AlignmentSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.util.AttributeSet
@@ -16,10 +13,10 @@ import android.widget.EditText
 import android.widget.TextView
 import android.graphics.RenderEffect
 import android.graphics.Shader
-import android.os.Build
+import android.text.style.RelativeSizeSpan
 import androidx.constraintlayout.widget.ConstraintLayout
-import androidx.core.content.res.ResourcesCompat
 import com.gnimble.typewriter.databinding.ViewTypewriterBinding
+import com.gnimble.typewriter.data.FontItem
 
 class TypewriterView @JvmOverloads constructor(
     context: Context,
@@ -96,37 +93,6 @@ class TypewriterView @JvmOverloads constructor(
         }
     }
 
-    fun setFont(fontItem: FontItem) {
-        currentFont = fontItem
-        val spannable = editText.text as Spannable
-        val selectionStart = editText.selectionStart
-        val selectionEnd = editText.selectionEnd
-
-        // If text is selected, apply font to selection
-        if (selectionStart != selectionEnd) {
-            // Remove existing CustomTypefaceSpan from selection
-            val existingSpans = spannable.getSpans(selectionStart, selectionEnd, CustomTypefaceSpan::class.java)
-            existingSpans.forEach { spannable.removeSpan(it) }
-
-            // Apply new font if not default
-            if (fontItem.resourceId != 0 && fontItem.typeface != null) {
-                spannable.setSpan(
-                    CustomTypefaceSpan(fontItem.typeface),
-                    selectionStart,
-                    selectionEnd,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-        } else {
-            // For new text: Set default typeface for the EditText
-            if (fontItem.resourceId == 0) {
-                editText.typeface = Typeface.DEFAULT
-            } else {
-                editText.typeface = fontItem.typeface
-            }
-        }
-    }
-
     fun setAlignment(alignment: Alignment) {
         when (alignment) {
             Alignment.LEFT -> editText.gravity = Gravity.TOP or Gravity.START
@@ -136,7 +102,11 @@ class TypewriterView @JvmOverloads constructor(
     }
 
     // Custom TypefaceSpan to support custom fonts
-    class CustomTypefaceSpan(private val typeface: Typeface) : TypefaceSpan("") {
+    class CustomTypefaceSpan(
+        val customTypeface: Typeface,
+        val resourceId: Int  // Add this to store the font resource ID
+    ) : TypefaceSpan("") {
+
         override fun updateDrawState(textPaint: android.text.TextPaint) {
             applyCustomTypeface(textPaint)
         }
@@ -149,7 +119,7 @@ class TypewriterView @JvmOverloads constructor(
             val oldTypeface = paint.typeface
             val oldStyle = oldTypeface?.style ?: 0
 
-            val fake = oldStyle and typeface.style.inv()
+            val fake = oldStyle and customTypeface.style.inv()
             if (fake and Typeface.BOLD != 0) {
                 paint.isFakeBoldText = true
             }
@@ -158,7 +128,62 @@ class TypewriterView @JvmOverloads constructor(
                 paint.textSkewX = -0.25f
             }
 
-            paint.typeface = typeface
+            paint.typeface = customTypeface
+        }
+    }
+
+    fun applyFont(fontItem: FontItem) {
+        val spannable = editText.text as Spannable
+        val start = editText.selectionStart
+        val end = editText.selectionEnd
+
+        if (start != end) {
+            // Remove existing CustomTypefaceSpan and TypefaceSpan in selection
+            val existingCustomSpans = spannable.getSpans(start, end, CustomTypefaceSpan::class.java)
+            existingCustomSpans.forEach { spannable.removeSpan(it) }
+
+            val existingTypefaceSpans = spannable.getSpans(start, end, TypefaceSpan::class.java)
+            existingTypefaceSpans.forEach { spannable.removeSpan(it) }
+
+            // Apply new font using CustomTypefaceSpan with resource ID
+            if (fontItem.resourceId != 0 && fontItem.typeface != null) {
+                spannable.setSpan(
+                    CustomTypefaceSpan(fontItem.typeface, fontItem.resourceId), // Pass resourceId
+                    start,
+                    end,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        } else {
+            // For new text when nothing is selected: Set the current font
+            currentFont = fontItem
+            if (fontItem.resourceId == 0) {
+                editText.typeface = Typeface.DEFAULT
+            } else {
+                editText.typeface = fontItem.typeface
+            }
+        }
+    }
+
+    fun applyHeadingStyle(headingStyle: HeadingStyle) {
+        val spannable = editText.text as Spannable
+        val start = editText.selectionStart
+        val end = editText.selectionEnd
+
+        if (start != end) {
+            // Remove existing RelativeSizeSpan in selection
+            val existingSpans = spannable.getSpans(start, end, RelativeSizeSpan::class.java)
+            existingSpans.forEach { spannable.removeSpan(it) }
+
+            // Apply new size
+            if (headingStyle.sizeFactor != 1.0f) {
+                spannable.setSpan(
+                    RelativeSizeSpan(headingStyle.sizeFactor),
+                    start,
+                    end,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
         }
     }
 
