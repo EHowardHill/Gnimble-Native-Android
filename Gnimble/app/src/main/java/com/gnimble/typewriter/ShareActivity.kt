@@ -25,6 +25,7 @@ import java.io.File
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.util.*
+import androidx.core.net.toUri
 
 class ShareActivity : AppCompatActivity() {
 
@@ -138,7 +139,7 @@ class ShareActivity : AppCompatActivity() {
 
         private fun serveCoverImage(): Response {
             try {
-                val coverUri = Uri.parse(coverPath)
+                val coverUri = coverPath.toUri()
                 val inputStream = context.contentResolver.openInputStream(coverUri)
                 if (inputStream != null) {
                     val bytes = inputStream.readBytes()
@@ -377,7 +378,7 @@ class ShareActivity : AppCompatActivity() {
                     if (!addr.isLoopbackAddress) {
                         val sAddr = addr.hostAddress
                         // Check if it's IPv4
-                        val isIPv4 = sAddr?.indexOf(':') ?: -1 < 0
+                        val isIPv4 = (sAddr?.indexOf(':') ?: -1) < 0
                         if (isIPv4 && sAddr != null) {
                             // Accept common private IP ranges
                             if (sAddr.startsWith("192.168.") ||
