@@ -186,6 +186,9 @@ class SimpleHtmlHandler(private val context: Context) {
     }
 
     fun htmlToSpannable(html: String): Spannable {
+        // First, parse the HTML to extract custom style information
+        val customStyles = parseCustomStylesInfo(html)
+
         val spannableBuilder = SpannableStringBuilder()
 
         // Parse HTML with custom handling for style attributes
@@ -208,9 +211,12 @@ class SimpleHtmlHandler(private val context: Context) {
             }
         }
 
-        // First pass: basic HTML parsing
+        // Create a modified HTML that preserves structure but removes custom attributes
+        val modifiedHtml = removeCustomAttributes(html)
+
+        // Basic HTML parsing
         val basicSpannable = Html.fromHtml(
-            html,
+            modifiedHtml,
             Html.FROM_HTML_MODE_COMPACT,
             imageGetter,
             null
@@ -218,13 +224,130 @@ class SimpleHtmlHandler(private val context: Context) {
 
         spannableBuilder.append(basicSpannable)
 
-        // Second pass: parse for custom styles
-        parseCustomStyles(html, spannableBuilder)
+        // Apply custom styles based on the extracted information
+        applyCustomStyles(spannableBuilder, customStyles)
 
-        // Third pass: restore paragraph indentation
+        // Restore paragraph indentation
         restoreParagraphIndentation(html, spannableBuilder)
 
         return spannableBuilder
+    }
+
+    private data class CustomStyleInfo(
+        val type: String,
+        val value: String,
+        val content: String,
+        val startTag: String,
+        val endTag: String
+    )
+
+    private fun parseCustomStylesInfo(html: String): List<CustomStyleInfo> {
+        val styles = mutableListOf<CustomStyleInfo>()
+
+        // Parse font resource IDs
+        val fontPattern = Regex("""(<span\s+data-font-resource-id="(\d+)"[^>]*>)(.*?)(</span>)""", RegexOption.DOT_MATCHES_ALL)
+        fontPattern.findAll(html).forEach { match ->
+            styles.add(CustomStyleInfo(
+                type = "font-resource",
+                value = match.groupValues[2],
+                content = match.groupValues[3],
+                startTag = match.groupValues[1],
+                endTag = match.groupValues[4]
+            ))
+        }
+
+        // Parse alignments
+        val alignmentPattern = Regex("""(<span\s+data-alignment="(\w+)"[^>]*>)(.*?)(</span>)""", RegexOption.DOT_MATCHES_ALL)
+        alignmentPattern.findAll(html).forEach { match ->
+            styles.add(CustomStyleInfo(
+                type = "alignment",
+                value = match.groupValues[2],
+                content = match.groupValues[3],
+                startTag = match.groupValues[1],
+                endTag = match.groupValues[4]
+            ))
+        }
+
+        return styles
+    }
+
+    private fun removeCustomAttributes(html: String): String {
+        var result = html
+        // Remove custom data attributes but keep the span tags
+        result = result.replace(Regex("""\s+data-font-resource-id="\d+""""), "")
+        result = result.replace(Regex("""\s+data-font-name="[^"]*""""), "")
+        result = result.replace(Regex("""\s+data-alignment="\w+""""), "")
+        return result
+    }
+
+    private fun applyCustomStyles(spannable: SpannableStringBuilder, styles: List<CustomStyleInfo>) {
+        for (style in styles) {
+            // Get the plain text content (strip HTML tags)
+            val plainContent = style.content
+                .replace(Regex("<[^>]+>"), "")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+                .replace("&quot;", "\"")
+                .trim()
+
+            if (plainContent.isEmpty()) continue
+
+            // Find all occurrences of this content in the spannable
+            var searchStart = 0
+            while (searchStart < spannable.length) {
+                val startIndex = spannable.toString().indexOf(plainContent, searchStart)
+                if (startIndex == -1) break
+
+                val endIndex = startIndex + plainContent.length
+
+                when (style.type) {
+                    "font-resource" -> {
+                        val resourceId = style.value.toIntOrNull()
+                        if (resourceId != null && resourceId != 0) {
+                            // Check if this span already has a font applied
+                            val existingFontSpans = spannable.getSpans(
+                                startIndex, endIndex,
+                                TypewriterView.CustomTypefaceSpan::class.java
+                            )
+
+                            if (existingFontSpans.isEmpty()) {
+                                val typeface = try {
+                                    ResourcesCompat.getFont(context, resourceId)
+                                } catch (e: Exception) {
+                                    null
+                                }
+
+                                if (typeface != null) {
+                                    spannable.setSpan(
+                                        TypewriterView.CustomTypefaceSpan(typeface, resourceId),
+                                        startIndex,
+                                        endIndex,
+                                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    "alignment" -> {
+                        val alignment = when (style.value) {
+                            "center" -> Layout.Alignment.ALIGN_CENTER
+                            "right" -> Layout.Alignment.ALIGN_OPPOSITE
+                            else -> Layout.Alignment.ALIGN_NORMAL
+                        }
+
+                        spannable.setSpan(
+                            AlignmentSpan.Standard(alignment),
+                            startIndex,
+                            endIndex,
+                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+                    }
+                }
+
+                searchStart = startIndex + 1
+            }
+        }
     }
 
     private fun restoreParagraphIndentation(html: String, spannable: SpannableStringBuilder) {
@@ -269,107 +392,6 @@ class SimpleHtmlHandler(private val context: Context) {
         }
     }
 
-    private fun parseCustomStyles(html: String, spannable: SpannableStringBuilder) {
-        // Parse for alignment in span tags (updated approach)
-        val alignmentPattern = Regex("""<span\s+data-alignment="(\w+)">(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
-        alignmentPattern.findAll(html).forEach { matchResult ->
-            val alignment = when (matchResult.groupValues[1]) {
-                "center" -> Layout.Alignment.ALIGN_CENTER
-                "right" -> Layout.Alignment.ALIGN_OPPOSITE
-                else -> Layout.Alignment.ALIGN_NORMAL
-            }
-
-            val content = matchResult.groupValues[2]
-            val plainContent = content.replace(Regex("<[^>]+>"), "")
-
-            // Find this content in the spannable
-            val startIndex = spannable.toString().indexOf(plainContent)
-            if (startIndex >= 0) {
-                spannable.setSpan(
-                    AlignmentSpan.Standard(alignment),
-                    startIndex,
-                    startIndex + plainContent.length,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-        }
-
-        // Parse for custom font resources by ID
-        val fontResourceIdPattern = Regex("""<span\s+data-font-resource-id="(\d+)"[^>]*>(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
-        fontResourceIdPattern.findAll(html).forEach { matchResult ->
-            val resourceId = matchResult.groupValues[1].toIntOrNull()
-            val content = matchResult.groupValues[2]
-            val plainContent = content.replace(Regex("<[^>]+>"), "")
-
-            if (resourceId != null && resourceId != 0) {
-                // Find where this content appears in the spannable
-                var searchStart = 0
-                while (searchStart < spannable.length) {
-                    val startIndex = spannable.toString().indexOf(plainContent, searchStart)
-                    if (startIndex == -1) break
-
-                    // Check if this position doesn't already have a font span
-                    val existingSpans = spannable.getSpans(startIndex, startIndex + plainContent.length, TypewriterView.CustomTypefaceSpan::class.java)
-                    if (existingSpans.isEmpty()) {
-                        // Load the font from resource ID
-                        val typeface = try {
-                            ResourcesCompat.getFont(context, resourceId)
-                        } catch (e: Exception) {
-                            null
-                        }
-
-                        if (typeface != null) {
-                            spannable.setSpan(
-                                TypewriterView.CustomTypefaceSpan(typeface, resourceId), // Pass resourceId
-                                startIndex,
-                                startIndex + plainContent.length,
-                                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                            )
-                        }
-                        break
-                    }
-                    searchStart = startIndex + 1
-                }
-            }
-        }
-
-        // Parse for font-family styles (for backwards compatibility)
-        val fontPattern = Regex("""<span\s+style="[^"]*font-family:\s*'([^']+)'[^"]*">(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
-        fontPattern.findAll(html).forEach { matchResult ->
-            val fontFamily = matchResult.groupValues[1]
-            val content = matchResult.groupValues[2]
-            val plainContent = content.replace(Regex("<[^>]+>"), "")
-
-            val startIndex = spannable.toString().indexOf(plainContent)
-            if (startIndex >= 0) {
-                spannable.setSpan(
-                    TypefaceSpan(fontFamily),
-                    startIndex,
-                    startIndex + plainContent.length,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-        }
-
-        // Parse for font-size styles
-        val sizePattern = Regex("""<span\s+style="[^"]*font-size:\s*([\d.]+)em[^"]*">(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
-        sizePattern.findAll(html).forEach { matchResult ->
-            val size = matchResult.groupValues[1].toFloatOrNull() ?: 1.0f
-            val content = matchResult.groupValues[2]
-            val plainContent = content.replace(Regex("<[^>]+>"), "")
-
-            val startIndex = spannable.toString().indexOf(plainContent)
-            if (startIndex >= 0) {
-                spannable.setSpan(
-                    RelativeSizeSpan(size),
-                    startIndex,
-                    startIndex + plainContent.length,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-        }
-    }
-
     private fun drawableToBase64(drawable: Drawable): String {
         val bitmap = createBitmap(drawable.intrinsicWidth, drawable.intrinsicHeight)
         val canvas = android.graphics.Canvas(bitmap)
@@ -380,14 +402,5 @@ class SimpleHtmlHandler(private val context: Context) {
         bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, baos)
         val imageBytes = baos.toByteArray()
         return Base64.encodeToString(imageBytes, Base64.NO_WRAP)
-    }
-
-    private fun getFontResourceId(resourceName: String): Int? {
-        return try {
-            val field = R.font::class.java.getField(resourceName)
-            field.getInt(null)
-        } catch (e: Exception) {
-            null
-        }
     }
 }

@@ -8,18 +8,17 @@
     tools:parentTag="androidx.constraintlayout.widget.ConstraintLayout">
 
     <androidx.cardview.widget.CardView
-        android:layout_width="0dp"
+        android:layout_width="5in"
         android:layout_height="0dp"
         android:layout_marginTop="@dimen/scrollview_margin_top"
         android:layout_marginBottom="32dp"
         app:cardBackgroundColor="@color/scrollview_background"
-        app:cardCornerRadius="12dp"
         app:cardElevation="8dp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintDimensionRatio="W,1:1"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toTopOf="parent"
+        tools:ignore="InOrMmUsage">
 
         <View
             android:id="@+id/blurBackground"
@@ -37,7 +36,8 @@
             <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="48dp">
+                android:padding="0.5in"
+                tools:ignore="InOrMmUsage">
 
                 <EditText
                     android:id="@+id/editText"
@@ -48,6 +48,7 @@
                     android:background="@android:color/transparent"
                     android:gravity="top|start"
                     android:hint="@string/document_body"
+                    android:textSize="12pt"
                     android:inputType="textMultiLine|textCapSentences"
                     android:scrollHorizontally="false"
                     android:lineSpacingMultiplier="1.5"
