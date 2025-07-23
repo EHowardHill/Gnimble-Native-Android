@@ -1,4 +1,4 @@
-// ShareActivity.kt - Enhanced with formatted content support
+// ShareActivity.kt - Enhanced with font support
 package com.gnimble.typewriter
 
 import android.graphics.Bitmap
@@ -32,6 +32,25 @@ class ShareActivity : AppCompatActivity() {
     private lateinit var binding: ActivityShareBinding
     private var webServer: BookWebServer? = null
     private val PORT = 8888
+
+    // Font mapping between local resources and Google Fonts
+    companion object {
+        // Map of resource field names to Google Fonts URLs and family names
+        // Update these mappings based on your actual fonts in /res/font/
+        private val FONT_MAPPINGS = mapOf(
+            "cardo" to FontMapping("Cardo", "https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&display=swap"),
+            "crimson_text" to FontMapping("Crimson Text", "https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&display=swap", "700"),
+            "eb_garamond" to FontMapping("EB Garamond", "https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&display=swap", "400", "italic"),
+            "young_serif" to FontMapping("Young Serif", "https://fonts.googleapis.com/css2?family=Young+Serif&display=swap"),
+        )
+
+        data class FontMapping(
+            val familyName: String,
+            val googleFontUrl: String,
+            val weight: String = "400",
+            val style: String = "normal"
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -157,10 +176,19 @@ class ShareActivity : AppCompatActivity() {
         }
 
         private fun generateHtmlContent(): String {
+            // Extract used fonts from the formatted content
+            val usedFonts = extractUsedFonts(formattedContent ?: "")
+
+            // Generate Google Fonts links
+            val fontLinks = generateFontLinks(usedFonts)
+
+            // Generate CSS for font classes
+            val fontStyles = generateFontStyles(usedFonts)
+
             val bodyContent = when (contentFormat) {
                 ContentFormat.HTML -> {
-                    // Use the formatted HTML content directly
-                    processFormattedHtml(formattedContent ?: convertPlainTextToHtml(content))
+                    // Use the formatted HTML content directly - DO NOT escape it
+                    processFormattedHtml(formattedContent ?: content)
                 }
                 ContentFormat.JSON -> {
                     // Convert JSON formatted content to HTML
@@ -188,6 +216,7 @@ class ShareActivity : AppCompatActivity() {
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>$title</title>
+                $fontLinks
                 <style>
                     body {
                         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
@@ -230,31 +259,30 @@ class ShareActivity : AppCompatActivity() {
                     }
                     .content p {
                         margin-bottom: 1.5em;
+                    }
+                    .content p.indented-paragraph {
                         text-indent: 2em;
                     }
-                    .content p:first-child {
-                        text-indent: 0;
-                    }
-                    /* Formatting styles */
+                    /* Text formatting styles */
                     .content b, .content strong {
                         font-weight: bold;
-                        color: #2c3e50;
                     }
                     .content i, .content em {
                         font-style: italic;
                     }
-                    .content .large-text {
-                        font-size: 1.2em;
+                    .content .large-text, .content span[style*="font-size: 2"], .content span[style*="font-size: 1.7"], .content span[style*="font-size: 1.5"] {
+                        font-size: 1.5em;
                     }
-                    .content .small-text {
-                        font-size: 0.9em;
+                    .content .small-text, .content span[style*="font-size: 0."] {
+                        font-size: 0.85em;
                     }
-                    .content .align-center {
-                        text-align: center;
+                    /* Alignment styles */
+                    .content .align-center, .content p.align-center {
+                        text-align: center !important;
                         text-indent: 0 !important;
                     }
-                    .content .align-right {
-                        text-align: right;
+                    .content .align-right, .content p.align-right {
+                        text-align: right !important;
                         text-indent: 0 !important;
                     }
                     .content img {
@@ -279,10 +307,8 @@ class ShareActivity : AppCompatActivity() {
                         color: #7f8c8d;
                         font-size: 0.9em;
                     }
-                    /* Custom font styles */
-                    .font-serif { font-family: Georgia, serif; }
-                    .font-mono { font-family: 'Courier New', monospace; }
-                    .font-cursive { font-family: cursive; }
+                    /* Generated font styles */
+                    $fontStyles
                 </style>
             </head>
             <body>
@@ -305,6 +331,123 @@ class ShareActivity : AppCompatActivity() {
             """.trimIndent()
         }
 
+        private fun extractUsedFonts(html: String): Set<String> {
+            val usedFonts = mutableSetOf<String>()
+
+            Log.d("BookWebServer", "Extracting fonts from HTML: ${html.take(200)}...")
+
+            // Extract font resource IDs from the HTML
+            val fontPattern = Regex("""data-font-resource-id="(\d+)"""")
+            fontPattern.findAll(html).forEach { match ->
+                val resourceId = match.groupValues[1].toIntOrNull()
+                Log.d("BookWebServer", "Found font resource ID: $resourceId")
+                if (resourceId != null) {
+                    // Find the corresponding font name from resource ID
+                    val fontFieldName = getFontFieldNameFromResourceId(resourceId)
+                    Log.d("BookWebServer", "Font field name for ID $resourceId: $fontFieldName")
+                    if (fontFieldName != null) {
+                        usedFonts.add(fontFieldName)
+                    }
+                }
+            }
+
+            // Also extract font names directly if present
+            val fontNamePattern = Regex("""data-font-name="([^"]+)"""")
+            fontNamePattern.findAll(html).forEach { match ->
+                val fontName = match.groupValues[1]
+                Log.d("BookWebServer", "Found font name: $fontName")
+                // Convert display name back to field name
+                val fieldName = fontName.lowercase().replace(" ", "_")
+                if (FONT_MAPPINGS.containsKey(fieldName)) {
+                    usedFonts.add(fieldName)
+                }
+            }
+
+            Log.d("BookWebServer", "Total fonts found: ${usedFonts.size} - $usedFonts")
+
+            return usedFonts
+        }
+
+        private fun getFontFieldNameFromResourceId(resourceId: Int): String? {
+            // Use reflection to find the field name from resource ID
+            try {
+                val fontFields = R.font::class.java.fields
+                for (field in fontFields) {
+                    if (field.getInt(null) == resourceId) {
+                        return field.name
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("BookWebServer", "Error finding font field name", e)
+            }
+            return null
+        }
+
+        private fun generateFontLinks(usedFonts: Set<String>): String {
+            val uniqueUrls = mutableSetOf<String>()
+
+            for (fontField in usedFonts) {
+                FONT_MAPPINGS[fontField]?.let { mapping ->
+                    uniqueUrls.add(mapping.googleFontUrl)
+                }
+            }
+
+            return uniqueUrls.joinToString("\n") { url ->
+                """<link href="$url" rel="stylesheet">"""
+            }
+        }
+
+        private fun generateFontStyles(usedFonts: Set<String>): String {
+            val styles = mutableListOf<String>()
+
+            Log.d("BookWebServer", "Generating font styles for: $usedFonts")
+
+            // Always include a default font style
+            styles.add("""
+                .content span {
+                    /* Default span style to ensure inheritance works */
+                }
+            """.trimIndent())
+
+            for (fontField in usedFonts) {
+                FONT_MAPPINGS[fontField]?.let { mapping ->
+                    val className = ".font-${fontField.replace("_", "-")}"
+                    val fontWeight = if (mapping.weight != "400") "font-weight: ${mapping.weight} !important;" else ""
+                    val fontStyle = if (mapping.style != "normal") "font-style: ${mapping.style} !important;" else ""
+
+                    styles.add("""
+                        .content $className {
+                            font-family: '${mapping.familyName}', serif !important;
+                            $fontWeight
+                            $fontStyle
+                        }
+                    """.trimIndent())
+
+                    Log.d("BookWebServer", "Generated style for $className with family '${mapping.familyName}'")
+                }
+            }
+
+            // Also add styles for font names (for backward compatibility)
+            for (fontField in usedFonts) {
+                FONT_MAPPINGS[fontField]?.let { mapping ->
+                    val displayName = fontField.replace("_", " ").split(" ")
+                        .joinToString(" ") { it.replaceFirstChar { c -> c.titlecase() } }
+                    val className = ".font-${displayName.replace(" ", "-")}"
+
+                    styles.add("""
+                        .content $className {
+                            font-family: '${mapping.familyName}', serif !important;
+                        }
+                    """.trimIndent())
+                }
+            }
+
+            val finalStyles = styles.joinToString("\n")
+            Log.d("BookWebServer", "Generated CSS:\n$finalStyles")
+
+            return finalStyles
+        }
+
         private fun convertPlainTextToHtml(text: String): String {
             return text
                 .split("\n\n")
@@ -313,34 +456,115 @@ class ShareActivity : AppCompatActivity() {
         }
 
         private fun processFormattedHtml(html: String): String {
-            // Process the HTML to ensure it's safe and properly formatted
-            // This is a simplified version - in production, use a proper HTML sanitizer
+            // First, extract just the body content if it's wrapped in html/body tags
+            var processed = html
 
-            return html
+            // Extract content between <body> tags if present
+            val bodyPattern = Regex("""<body[^>]*>(.*?)</body>""", RegexOption.DOT_MATCHES_ALL)
+            val bodyMatch = bodyPattern.find(processed)
+            if (bodyMatch != null) {
+                processed = bodyMatch.groupValues[1]
+            }
+
+            // Remove any remaining html, head, or body tags
+            processed = processed
+                .replace(Regex("""</?html[^>]*>"""), "")
+                .replace(Regex("""</?head[^>]*>"""), "")
+                .replace(Regex("""</?body[^>]*>"""), "")
+                .replace(Regex("""<meta[^>]*>"""), "")
+                .replace(Regex("""<title[^>]*>.*?</title>"""), "")
                 // Remove any script tags for security
-                .replace(Regex("<script[^>]*>.*?</script>", RegexOption.DOT_MATCHES_ALL), "")
-                // Convert custom font tags to CSS classes
-                .replace(Regex("<font[^>]*data-font-name=\"([^\"]+)\"[^>]*>"), "<span class=\"font-$1\">")
-                .replace("</font>", "</span>")
-                // Convert custom size tags
-                .replace(Regex("<size[^>]*data-size-factor=\"([0-9.]+)\"[^>]*>")) { match ->
-                    val factor = match.groupValues[1].toFloatOrNull() ?: 1.0f
+                .replace(Regex("""<script[^>]*>.*?</script>""", RegexOption.DOT_MATCHES_ALL), "")
+
+            // Convert font references BEFORE other processing
+            processed = convertFontReferences(processed)
+
+            // Handle alignment - make sure to catch all variations
+            processed = processed
+                .replace(Regex("""<span\s+data-alignment="center"[^>]*>"""), """<span class="align-center">""")
+                .replace(Regex("""<span\s+data-alignment="right"[^>]*>"""), """<span class="align-right">""")
+                .replace(Regex("""<span\s+data-alignment="left"[^>]*>"""), """<span>""")
+
+            // Handle size spans - both data attributes and inline styles
+            processed = processed
+                .replace(Regex("""<span\s+style="font-size:\s*([\d.]+)em;"[^>]*>""")) { match ->
+                    val size = match.groupValues[1].toFloatOrNull() ?: 1.0f
                     when {
-                        factor > 1.2f -> "<span class=\"large-text\">"
-                        factor < 0.9f -> "<span class=\"small-text\">"
+                        size >= 1.5f -> """<span class="large-text">"""
+                        size <= 0.8f -> """<span class="small-text">"""
                         else -> "<span>"
                     }
                 }
-                .replace("</size>", "</span>")
-                // Handle alignment
-                .replace(Regex("<p[^>]*align=\"center\"[^>]*>"), "<p class=\"align-center\">")
-                .replace(Regex("<p[^>]*align=\"right\"[^>]*>"), "<p class=\"align-right\">")
-                // Process images - convert local URIs to server endpoints
-                .replace(Regex("<img[^>]*data-image-uri=\"([^\"]+)\"[^>]*>")) { match ->
-                    val imageUri = match.groupValues[1]
-                    // In production, you'd properly handle image serving
-                    "<img src=\"/image/${imageUri.hashCode()}\" alt=\"Embedded image\">"
+
+            // Process images - convert both base64 and URI references
+            processed = processed
+                .replace(Regex("""<img[^>]*src="data:image/[^"]*"[^>]*>""")) { match ->
+                    // Keep base64 images as-is
+                    match.value
                 }
+                .replace(Regex("""<img[^>]*data-image-uri="([^"]+)"[^>]*>""")) { match ->
+                    val imageUri = match.groupValues[1]
+                    """<img src="/image/${imageUri.hashCode()}" alt="Embedded image">"""
+                }
+
+            // Handle paragraph classes
+            processed = processed
+                .replace(Regex("""<p\s+class="indented-paragraph">"""), """<p class="indented-paragraph">""")
+                .trim()
+
+            // Debug log to see what we're actually serving
+            Log.d("BookWebServer", "Processed HTML: $processed")
+
+            return processed
+        }
+
+        private fun convertFontReferences(html: String): String {
+            var processed = html
+
+            // Convert data-font-resource-id spans - handle multiple attributes
+            processed = processed.replace(Regex("""<span([^>]*?)data-font-resource-id="(\d+)"([^>]*?)>""")) { match ->
+                val beforeAttr = match.groupValues[1]
+                val resourceId = match.groupValues[2].toIntOrNull()
+                val afterAttr = match.groupValues[3]
+
+                if (resourceId != null) {
+                    val fontFieldName = getFontFieldNameFromResourceId(resourceId)
+                    if (fontFieldName != null) {
+                        // Check if there are other attributes to preserve
+                        val otherAttrs = (beforeAttr + afterAttr).trim()
+                        if (otherAttrs.isNotEmpty()) {
+                            """<span class="font-${fontFieldName.replace("_", "-")}" $otherAttrs>"""
+                        } else {
+                            """<span class="font-${fontFieldName.replace("_", "-")}">"""
+                        }
+                    } else {
+                        "<span${beforeAttr}${afterAttr}>"
+                    }
+                } else {
+                    "<span${beforeAttr}${afterAttr}>"
+                }
+            }
+
+            // Convert data-font-name spans
+            processed = processed.replace(Regex("""<span([^>]*?)data-font-name="([^"]+)"([^>]*?)>""")) { match ->
+                val beforeAttr = match.groupValues[1]
+                val fontName = match.groupValues[2]
+                val afterAttr = match.groupValues[3]
+
+                // Clean up the other attributes - remove the data-font-resource-id if present
+                var cleanedAttrs = (beforeAttr + afterAttr)
+                    .replace(Regex("""data-font-resource-id="\d+""""), "")
+                    .trim()
+
+                val className = "font-${fontName.replace(" ", "-")}"
+                if (cleanedAttrs.isNotEmpty()) {
+                    """<span class="$className" $cleanedAttrs>"""
+                } else {
+                    """<span class="$className">"""
+                }
+            }
+
+            return processed
         }
 
         private fun escapeHtml(text: String): String {

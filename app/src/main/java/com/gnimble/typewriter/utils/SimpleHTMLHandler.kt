@@ -59,9 +59,11 @@ class SimpleHtmlHandler(private val context: Context) {
             }
     }
 
-    fun spannableToHtml(spannable: Spannable): String {
+    fun spannableToHtml(spannable: Spannable, includeWrapper: Boolean = true): String {
         val sb = StringBuilder()
-        sb.append("<html><body>")
+        if (includeWrapper) {
+            sb.append("<html><body>")
+        }
 
         var lastPosition = 0
         val text = spannable.toString()
@@ -181,8 +183,16 @@ class SimpleHtmlHandler(private val context: Context) {
             sb.append("</p>")
         }
 
-        sb.append("</body></html>")
+        if (includeWrapper) {
+            sb.append("</body></html>")
+        }
+
         return sb.toString()
+    }
+
+    // Keep the original method signature for backward compatibility
+    fun spannableToHtml(spannable: Spannable): String {
+        return spannableToHtml(spannable, true)
     }
 
     fun htmlToSpannable(html: String): Spannable {

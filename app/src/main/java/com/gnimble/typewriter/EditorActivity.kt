@@ -19,6 +19,7 @@ import com.gnimble.typewriter.data.Book
 import com.gnimble.typewriter.data.FontItem
 import com.gnimble.typewriter.databinding.ActivityEditorBinding
 import com.gnimble.typewriter.utils.SimpleHtmlHandler
+import com.gnimble.typewriter.data.ContentFormat
 import kotlinx.coroutines.launch
 import java.util.Date
 
@@ -191,19 +192,20 @@ class EditorActivity : AppCompatActivity() {
         })
     }
 
-    // Update the saveBook function to preserve FirstLineIndentSpan
     private fun saveBook() {
         lifecycleScope.launch {
             currentBook?.let { book ->
                 val htmlHandler = SimpleHtmlHandler(this@EditorActivity)
-                // The HTML handler should be updated to handle FirstLineIndentSpan
-                // For now, we'll just save as is
+                // Export without HTML wrapper for embedding
                 val htmlContent = htmlHandler.spannableToHtml(
-                    binding.typewriter.editText.text as Spannable
+                    binding.typewriter.editText.text as Spannable,
+                    includeWrapper = false  // Don't include <html><body> tags
                 )
 
                 val updatedBook = book.copy(
-                    storyContent = htmlContent,
+                    storyContent = binding.typewriter.editText.text.toString(), // Plain text version
+                    formattedContent = htmlContent, // HTML formatted version (without wrapper)
+                    contentFormat = ContentFormat.HTML, // Mark as HTML format
                     lastEdited = Date()
                 )
                 database.bookDao().updateBook(updatedBook)
@@ -212,14 +214,28 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
-    // Update the loadBook function to use setContent
     private fun loadBook() {
         lifecycleScope.launch {
             currentBook = database.bookDao().getBook(bookId)
             currentBook?.let { book ->
                 try {
                     val htmlHandler = SimpleHtmlHandler(this@EditorActivity)
-                    val spannable = htmlHandler.htmlToSpannable(book.storyContent)
+
+                    // Use formatted content if available, otherwise use story content
+                    val contentToLoad = if (book.contentFormat == ContentFormat.HTML && !book.formattedContent.isNullOrEmpty()) {
+                        // If the content doesn't have HTML wrapper, add it for parsing
+                        val content = book.formattedContent
+                        if (!content.startsWith("<html>") && !content.startsWith("<!DOCTYPE")) {
+                            "<html><body>$content</body></html>"
+                        } else {
+                            content
+                        }
+                    } else {
+                        // Convert plain text to HTML
+                        "<html><body><p>${book.storyContent.replace("\n", "</p><p>")}</p></body></html>"
+                    }
+
+                    val spannable = htmlHandler.htmlToSpannable(contentToLoad)
                     // Use setContent to ensure paragraph indents are applied
                     binding.typewriter.setContent(spannable)
                     supportActionBar?.title = book.title
