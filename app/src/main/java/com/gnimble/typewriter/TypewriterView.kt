@@ -2,8 +2,13 @@
 package com.gnimble.typewriter
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Typeface
+import android.text.Layout
 import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.style.LeadingMarginSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.util.AttributeSet
@@ -29,6 +34,9 @@ class TypewriterView @JvmOverloads constructor(
 
     private var currentFont: FontItem? = null
 
+    // Calculate 1/4 inch in pixels (1/4 inch = 0.25 * DPI)
+    private val tabIndentPixels = (0.25f * resources.displayMetrics.densityDpi).toInt()
+
     val editText: EditText
         get() = binding.editText
 
@@ -43,6 +51,88 @@ class TypewriterView @JvmOverloads constructor(
 
         // Ensure EditText uses SpannableStringBuilder
         editText.setText("", TextView.BufferType.SPANNABLE)
+
+        // Configure EditText for proper word wrapping
+        editText.apply {
+            // Ensure no horizontal scrolling
+            isHorizontalScrollBarEnabled = false
+
+            // Set 1.5x line spacing for readability
+            setLineSpacing(0f, 1.5f)
+
+            // Add some padding to prevent text from touching edges
+            val horizontalPadding = (8 * resources.displayMetrics.density).toInt()
+            setPadding(horizontalPadding, paddingTop, horizontalPadding, paddingBottom)
+        }
+
+        // Add text change listener to handle paragraph indentation
+        editText.addTextChangedListener(ParagraphIndentWatcher())
+    }
+
+    // Custom span for first line indentation
+    class FirstLineIndentSpan(private val indent: Int) : LeadingMarginSpan {
+        override fun getLeadingMargin(first: Boolean): Int {
+            return if (first) indent else 0
+        }
+
+        override fun drawLeadingMargin(
+            canvas: Canvas, paint: Paint, x: Int, dir: Int,
+            top: Int, baseline: Int, bottom: Int,
+            text: CharSequence, start: Int, end: Int,
+            first: Boolean, layout: Layout
+        ) {
+            // No drawing needed, just spacing
+        }
+    }
+
+    // Text watcher to handle paragraph indentation
+    private inner class ParagraphIndentWatcher : android.text.TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+
+        override fun afterTextChanged(s: android.text.Editable?) {
+            if (s == null) return
+
+            // Remove the watcher temporarily to avoid infinite loop
+            editText.removeTextChangedListener(this)
+
+            // Apply indentation to all paragraphs
+            applyParagraphIndents(s)
+
+            // Re-add the watcher
+            editText.addTextChangedListener(this)
+        }
+    }
+
+    private fun applyParagraphIndents(spannable: android.text.Editable) {
+        // Remove all existing FirstLineIndentSpan
+        val existingIndents = spannable.getSpans(0, spannable.length, FirstLineIndentSpan::class.java)
+        existingIndents.forEach { spannable.removeSpan(it) }
+
+        // Find all paragraph starts
+        var paragraphStart = 0
+        while (paragraphStart < spannable.length) {
+            // Find the end of the current paragraph
+            var paragraphEnd = spannable.indexOf('\n', paragraphStart)
+            if (paragraphEnd == -1) {
+                paragraphEnd = spannable.length
+            } else {
+                paragraphEnd++ // Include the newline character
+            }
+
+            // Apply indent only if the paragraph has content
+            if (paragraphEnd > paragraphStart &&
+                (paragraphEnd == paragraphStart + 1 || spannable[paragraphStart] != '\n')) {
+                spannable.setSpan(
+                    FirstLineIndentSpan(tabIndentPixels),
+                    paragraphStart,
+                    paragraphEnd,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                )
+            }
+
+            paragraphStart = paragraphEnd
+        }
     }
 
     enum class Alignment {
@@ -218,7 +308,8 @@ class TypewriterView @JvmOverloads constructor(
             drawable?.let {
                 val intrinsicWidth = it.intrinsicWidth
                 val intrinsicHeight = it.intrinsicHeight
-                val maxWidth = editText.width - editText.paddingLeft - editText.paddingRight
+                // Account for padding and indentation when calculating max width
+                val maxWidth = editText.width - editText.paddingLeft - editText.paddingRight - tabIndentPixels
 
                 // Scale image if needed
                 if (intrinsicWidth > maxWidth) {
@@ -249,5 +340,12 @@ class TypewriterView @JvmOverloads constructor(
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    // Call this when loading content to ensure indents are applied
+    fun setContent(content: CharSequence) {
+        editText.setText(content, TextView.BufferType.SPANNABLE)
+        // Force apply indents after setting content
+        applyParagraphIndents(editText.text)
     }
 }

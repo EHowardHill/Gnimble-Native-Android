@@ -77,8 +77,28 @@ class SimpleHtmlHandler(private val context: Context) {
         // Sort by start position
         allSpans.sortBy { it.start }
 
+        // Track if we're in a paragraph with indentation
+        var currentParagraphIndented = false
+        var paragraphStart = 0
+
         // Process text with spans
         for (i in 0 until text.length) {
+            // Check if this is the start of a new paragraph
+            if (i == 0 || (i > 0 && text[i - 1] == '\n')) {
+                paragraphStart = i
+                // Check if this paragraph has FirstLineIndentSpan
+                currentParagraphIndented = allSpans.any { spanInfo ->
+                    spanInfo.span is TypewriterView.FirstLineIndentSpan &&
+                            spanInfo.start <= i && spanInfo.end > i
+                }
+
+                if (currentParagraphIndented) {
+                    sb.append("<p class=\"indented-paragraph\">")
+                } else {
+                    sb.append("<p>")
+                }
+            }
+
             // Check for spans starting at this position
             val startingSpans = allSpans.filter { it.start == i }
             startingSpans.forEach { spanInfo ->
@@ -96,7 +116,7 @@ class SimpleHtmlHandler(private val context: Context) {
                             Layout.Alignment.ALIGN_OPPOSITE -> "right"
                             else -> "left"
                         }
-                        sb.append("<p style=\"text-align: $align;\">")
+                        sb.append("<span data-alignment=\"$align\">")
                     }
                     is RelativeSizeSpan -> {
                         sb.append("<span style=\"font-size: ${span.sizeChange}em;\">")
@@ -119,6 +139,9 @@ class SimpleHtmlHandler(private val context: Context) {
                         val base64Image = drawableToBase64(drawable)
                         sb.append("<img src=\"data:image/png;base64,$base64Image\" />")
                     }
+                    is TypewriterView.FirstLineIndentSpan -> {
+                        // Already handled at paragraph level
+                    }
                 }
             }
 
@@ -129,15 +152,7 @@ class SimpleHtmlHandler(private val context: Context) {
                 '&' -> sb.append("&amp;")
                 '"' -> sb.append("&quot;")
                 '\n' -> {
-                    // Check if we're in a paragraph span
-                    val hasAlignment = allSpans.any {
-                        it.span is AlignmentSpan && i >= it.start && i < it.end
-                    }
-                    if (hasAlignment) {
-                        sb.append("</p><p style=\"text-align: inherit;\">")
-                    } else {
-                        sb.append("<br/>")
-                    }
+                    sb.append("</p>")
                 }
                 else -> sb.append(text[i])
             }
@@ -153,12 +168,17 @@ class SimpleHtmlHandler(private val context: Context) {
                             Typeface.BOLD_ITALIC -> sb.append("</i></b>")
                         }
                     }
-                    is AlignmentSpan -> sb.append("</p>")
+                    is AlignmentSpan -> sb.append("</span>")
                     is RelativeSizeSpan -> sb.append("</span>")
                     is TypewriterView.CustomTypefaceSpan -> sb.append("</span>")
                     is TypefaceSpan -> sb.append("</span>")
                 }
             }
+        }
+
+        // Close any open paragraph
+        if (text.isEmpty() || text.last() != '\n') {
+            sb.append("</p>")
         }
 
         sb.append("</body></html>")
@@ -201,15 +221,58 @@ class SimpleHtmlHandler(private val context: Context) {
         // Second pass: parse for custom styles
         parseCustomStyles(html, spannableBuilder)
 
+        // Third pass: restore paragraph indentation
+        restoreParagraphIndentation(html, spannableBuilder)
+
         return spannableBuilder
     }
 
-    private fun parseCustomStyles(html: String, spannable: SpannableStringBuilder) {
-        // Parse for text-align styles in <p> tags
-        val pPattern = Regex("""<p\s+style="[^"]*text-align:\s*(\w+)[^"]*">(.*?)</p>""", RegexOption.DOT_MATCHES_ALL)
-        var htmlText = html.replace("<br/>", "\n").replace("<br>", "\n")
+    private fun restoreParagraphIndentation(html: String, spannable: SpannableStringBuilder) {
+        // Calculate tab indent (1/4 inch in pixels)
+        val tabIndentPixels = (0.25f * context.resources.displayMetrics.densityDpi).toInt()
 
-        pPattern.findAll(htmlText).forEach { matchResult ->
+        // Find all indented paragraphs
+        val indentedParagraphPattern = Regex("""<p\s+class="indented-paragraph">(.*?)</p>""", RegexOption.DOT_MATCHES_ALL)
+
+        indentedParagraphPattern.findAll(html).forEach { matchResult ->
+            val content = matchResult.groupValues[1]
+            // Remove any nested HTML tags to get plain text
+            val plainContent = content.replace(Regex("<[^>]+>"), "")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+                .replace("&quot;", "\"")
+
+            // Find this paragraph in the spannable
+            var searchStart = 0
+            while (searchStart < spannable.length) {
+                val startIndex = spannable.toString().indexOf(plainContent, searchStart)
+                if (startIndex == -1) break
+
+                // Find the end of this paragraph (next newline or end of text)
+                var endIndex = spannable.toString().indexOf('\n', startIndex)
+                if (endIndex == -1) {
+                    endIndex = spannable.length
+                } else {
+                    endIndex++ // Include the newline
+                }
+
+                // Apply FirstLineIndentSpan
+                spannable.setSpan(
+                    TypewriterView.FirstLineIndentSpan(tabIndentPixels),
+                    startIndex,
+                    endIndex,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                )
+                break
+            }
+        }
+    }
+
+    private fun parseCustomStyles(html: String, spannable: SpannableStringBuilder) {
+        // Parse for alignment in span tags (updated approach)
+        val alignmentPattern = Regex("""<span\s+data-alignment="(\w+)">(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
+        alignmentPattern.findAll(html).forEach { matchResult ->
             val alignment = when (matchResult.groupValues[1]) {
                 "center" -> Layout.Alignment.ALIGN_CENTER
                 "right" -> Layout.Alignment.ALIGN_OPPOSITE
