@@ -7,7 +7,6 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.Spannable
-import android.text.SpannableStringBuilder
 import android.text.style.LeadingMarginSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
@@ -18,6 +17,7 @@ import android.widget.EditText
 import android.widget.TextView
 import android.graphics.RenderEffect
 import android.graphics.Shader
+import android.graphics.text.LineBreaker
 import android.text.style.RelativeSizeSpan
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.gnimble.typewriter.databinding.ViewTypewriterBinding
@@ -136,7 +136,7 @@ class TypewriterView @JvmOverloads constructor(
     }
 
     enum class Alignment {
-        LEFT, CENTER, RIGHT
+        LEFT, CENTER, RIGHT, JUSTIFY
     }
 
     fun toggleBold() {
@@ -184,10 +184,25 @@ class TypewriterView @JvmOverloads constructor(
     }
 
     fun setAlignment(alignment: Alignment) {
+        editText.justificationMode = LineBreaker.JUSTIFICATION_MODE_INTER_WORD
+
         when (alignment) {
-            Alignment.LEFT -> editText.gravity = Gravity.TOP or Gravity.START
-            Alignment.CENTER -> editText.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            Alignment.RIGHT -> editText.gravity = Gravity.TOP or Gravity.END
+            Alignment.LEFT -> {
+                editText.gravity = Gravity.TOP or Gravity.START
+                editText.justificationMode = LineBreaker.JUSTIFICATION_MODE_NONE
+            }
+            Alignment.CENTER -> {
+                editText.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                editText.justificationMode = LineBreaker.JUSTIFICATION_MODE_NONE
+            }
+            Alignment.RIGHT -> {
+                editText.gravity = Gravity.TOP or Gravity.END
+                editText.justificationMode = LineBreaker.JUSTIFICATION_MODE_NONE
+            }
+            Alignment.JUSTIFY -> {
+                editText.gravity = Gravity.TOP or Gravity.START
+                editText.justificationMode = LineBreaker.JUSTIFICATION_MODE_INTER_WORD
+            }
         }
     }
 
@@ -271,28 +286,6 @@ class TypewriterView @JvmOverloads constructor(
                     RelativeSizeSpan(headingStyle.sizeFactor),
                     start,
                     end,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-        }
-    }
-
-    fun setTextSize(relativeSizeFactor: Float) {
-        val spannable = editText.text as Spannable
-        val selectionStart = editText.selectionStart
-        val selectionEnd = editText.selectionEnd
-
-        if (selectionStart != selectionEnd) {
-            // Remove existing size spans
-            val existingSpans = spannable.getSpans(selectionStart, selectionEnd, android.text.style.RelativeSizeSpan::class.java)
-            existingSpans.forEach { spannable.removeSpan(it) }
-
-            // Apply new size if not normal
-            if (relativeSizeFactor != 1.0f) {
-                spannable.setSpan(
-                    android.text.style.RelativeSizeSpan(relativeSizeFactor),
-                    selectionStart,
-                    selectionEnd,
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
             }

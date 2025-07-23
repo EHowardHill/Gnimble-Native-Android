@@ -21,6 +21,7 @@ import com.gnimble.typewriter.databinding.ActivityEditorBinding
 import com.gnimble.typewriter.utils.SimpleHtmlHandler
 import com.gnimble.typewriter.data.ContentFormat
 import kotlinx.coroutines.launch
+import kotlin.math.floor
 import java.util.Date
 
 class EditorActivity : AppCompatActivity() {
@@ -288,6 +289,21 @@ class EditorActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         saveBook()
+    }
+
+    fun getWordCount(): Int {
+        val wordCount = binding.typewriter.editText.text.toString().split("\\s+".toRegex()).size
+        return wordCount
+    }
+
+    fun getPageCount(): Int {
+        val layout = binding.typewriter.editText.layout ?: return 1
+        val textHeightInPixels = layout.height
+        val ydpi = resources.displayMetrics.ydpi
+        if (ydpi <= 0) return 1
+        val heightInInches = textHeightInPixels / ydpi
+        val pageCount = floor(heightInInches / 7.0).toInt() + 1
+        return pageCount
     }
 
     companion object {

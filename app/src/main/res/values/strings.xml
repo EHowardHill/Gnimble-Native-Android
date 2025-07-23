@@ -33,4 +33,5 @@
     <string name="starting_server">Starting server...</string>
     <string name="share_your_book">Share Your Story</string>
     <string name="create_new_story">Create New Story</string>
+    <string name="align_full">Align Full</string>
 </resources>

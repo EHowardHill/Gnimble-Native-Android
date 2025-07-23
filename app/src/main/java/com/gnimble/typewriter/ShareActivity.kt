@@ -285,6 +285,10 @@ class ShareActivity : AppCompatActivity() {
                         text-align: right !important;
                         text-indent: 0 !important;
                     }
+                    .content .align-justify, .content p.align-justify {
+                        text-align: justify !important;
+                        text-indent: 0 !important;
+                    }
                     .content img {
                         max-width: 100%;
                         height: auto;
