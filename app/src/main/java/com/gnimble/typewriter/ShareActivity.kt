@@ -327,7 +327,7 @@ class ShareActivity : AppCompatActivity() {
                     </div>
                     
                     <div class="footer">
-                        <p>Shared with 💙 via Typewriter</p>
+                        <p>Shared with 💙 from Gnimble Typewriter</p>
                     </div>
                 </div>
             </body>

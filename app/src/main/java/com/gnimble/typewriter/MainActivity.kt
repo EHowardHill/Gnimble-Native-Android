@@ -48,6 +48,11 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
+        binding.actionUpload.setOnClickListener {
+            val intent = Intent(this, UploadActivity::class.java)
+            startActivity(intent)
+        }
+
         setupRecyclerView()
         observeBooks()
         setupFab()

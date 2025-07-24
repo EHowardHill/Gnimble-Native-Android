@@ -38,4 +38,10 @@
     <string name="statistics">Statistics</string>
     <string name="find_text">Find Text</string>
     <string name="replace_with">Replace With</string>
+    <string name="open_upload">Upload Files</string>
+    <string name="action_upload">Upload Files</string>
+    <string name="stop_upload_server">Stop Upload Server</string>
+    <string name="qr_code_for_upload">QR Code for Upload</string>
+    <string name="starting_upload_server">Start Upload Server</string>
+    <string name="receive_files">Recieve Files</string>
 </resources>

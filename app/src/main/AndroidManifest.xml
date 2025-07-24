@@ -57,6 +57,14 @@
             android:stateNotNeeded="true"
             android:theme="@style/Theme.Gnimble.Launcher">
         </activity>
+
+        <activity
+            android:name=".UploadActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:theme="@style/Theme.Gnimble.Launcher">
+        </activity>
     </application>
 
 </manifest>
