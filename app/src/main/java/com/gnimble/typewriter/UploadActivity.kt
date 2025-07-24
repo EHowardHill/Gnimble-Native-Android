@@ -45,37 +45,12 @@ class UploadActivity : AppCompatActivity() {
         binding = ActivityUploadBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Check for storage permissions
-        if (checkStoragePermission()) {
-            startUploadServer()
-        } else {
-            requestStoragePermission()
-        }
+        startUploadServer()
 
         binding.stopServerButton.setOnClickListener {
             stopWebServer()
             finish()
         }
-    }
-
-    private fun checkStoragePermission(): Boolean {
-        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            // Android 10+ doesn't need WRITE_EXTERNAL_STORAGE for app-specific directory
-            true
-        } else {
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
-        }
-    }
-
-    private fun requestStoragePermission() {
-        ActivityCompat.requestPermissions(
-            this,
-            arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
-            PERMISSION_REQUEST_CODE
-        )
     }
 
     override fun onRequestPermissionsResult(
