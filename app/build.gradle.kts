@@ -10,8 +10,8 @@ android {
 
     defaultConfig {
         applicationId = "com.gnimble.typewriter"
-        minSdk = 31
-        targetSdk = 35
+        minSdk = 30
+        targetSdk = 33
         versionCode = 1
         versionName = "1.0"
 

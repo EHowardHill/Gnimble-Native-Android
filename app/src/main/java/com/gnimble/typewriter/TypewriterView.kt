@@ -18,7 +18,9 @@ import android.widget.TextView
 import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.graphics.text.LineBreaker
+import android.os.Build
 import android.text.style.RelativeSizeSpan
+import androidx.annotation.RequiresApi
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.gnimble.typewriter.databinding.ViewTypewriterBinding
 import com.gnimble.typewriter.data.FontItem
@@ -41,14 +43,6 @@ class TypewriterView @JvmOverloads constructor(
         get() = binding.editText
 
     init {
-        binding.blurBackground.setRenderEffect(
-            RenderEffect.createBlurEffect(
-                25f, // radiusX
-                25f, // radiusY
-                Shader.TileMode.CLAMP
-            )
-        )
-
         // Ensure EditText uses SpannableStringBuilder
         editText.setText("", TextView.BufferType.SPANNABLE)
 
