@@ -17,11 +17,4 @@
         android:contentDescription="@string/open_settings"
         app:showAsAction="ifRoom" />
 
-    <item
-        android:id="@+id/action_update"
-        android:icon="@drawable/system_update_alt_24px"
-        android:title="@string/action_update"
-        android:contentDescription="@string/open_update"
-        app:showAsAction="ifRoom" />
-
 </menu>

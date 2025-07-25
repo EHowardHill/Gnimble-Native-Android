@@ -1,0 +1,1 @@
+Gnimble Typewriter is an easy-to-use digital typewriter solution. This app is designed to be bundled with dedicated Gnimble devices, but it's also available for other devices in case you'd like to turn them into Gnimble Typewriters.

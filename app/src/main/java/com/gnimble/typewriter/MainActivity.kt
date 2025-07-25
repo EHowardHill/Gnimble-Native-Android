@@ -59,11 +59,6 @@ class MainActivity : AppCompatActivity() {
                     startActivity(intent)
                     true
                 }
-                R.id.action_update -> {
-                    // Handle Gnimble system update action
-                    checkForUpdates()
-                    true
-                }
                 else -> false
             }
         }
@@ -71,17 +66,6 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         observeBooks()
         setupFab()
-    }
-
-    private fun checkForUpdates() {
-        val updateManager = UpdateManager(this)
-        updateManager.checkForUpdates { updateAvailable ->
-            if (updateAvailable == false) {
-                Toast.makeText(this, "Update not found", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "Update found", Toast.LENGTH_SHORT).show()
-            }
-        }
     }
 
     private fun setupRecyclerView() {
