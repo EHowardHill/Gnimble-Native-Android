@@ -2,17 +2,24 @@
 package com.gnimble.typewriter
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
+import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import com.gnimble.typewriter.data.Book
+import com.gnimble.typewriter.data.ContentFormat
 import com.gnimble.typewriter.databinding.ActivityUploadBinding
+import com.gnimble.typewriter.viewmodel.MainViewModel
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.WriterException
 import com.google.zxing.qrcode.QRCodeWriter
@@ -30,6 +37,7 @@ import java.util.*
 class UploadActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityUploadBinding
+    private lateinit var mainViewModel: MainViewModel
     private var webServer: UploadWebServer? = null
     private val PORT = 8889 // Different port from ShareActivity
     private val PERMISSION_REQUEST_CODE = 1001
@@ -37,6 +45,10 @@ class UploadActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "UploadActivity"
         private const val MAX_UPLOAD_SIZE = 50 * 1024 * 1024 // 50MB max file size
+
+        // Supported document extensions
+        private val DOCUMENT_EXTENSIONS = setOf("txt", "rtf", "html", "htm")
+        private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "bmp", "webp")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,6 +56,9 @@ class UploadActivity : AppCompatActivity() {
 
         binding = ActivityUploadBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Initialize ViewModel
+        mainViewModel = ViewModelProvider(this)[MainViewModel::class.java]
 
         startUploadServer()
 
@@ -90,7 +105,9 @@ class UploadActivity : AppCompatActivity() {
                     binding.instructionsText.text = "Upload server is active! Others can upload files by:\n" +
                             "1. Scanning the QR code below, or\n" +
                             "2. Entering this URL in their browser: $serverUrl\n\n" +
-                            "Files will be saved to: ${uploadsDir.absolutePath}"
+                            "Supported files:\n" +
+                            "• Images: JPG, PNG, GIF, etc. (saved to Pictures)\n" +
+                            "• Documents: TXT, RTF, HTML (converted to books)"
 
                     // Generate QR code
                     generateQRCode(serverUrl)
@@ -117,6 +134,125 @@ class UploadActivity : AppCompatActivity() {
         }
     }
 
+    private fun getFileExtension(fileName: String): String {
+        return fileName.substringAfterLast('.', "").lowercase()
+    }
+
+    private fun isDocumentFile(fileName: String): Boolean {
+        return DOCUMENT_EXTENSIONS.contains(getFileExtension(fileName))
+    }
+
+    private fun isImageFile(fileName: String): Boolean {
+        return IMAGE_EXTENSIONS.contains(getFileExtension(fileName))
+    }
+
+    // Convert RTF to plain text (basic implementation)
+    private fun convertRtfToPlainText(rtfContent: String): String {
+        // Basic RTF to plain text conversion
+        // This is a simplified version - for production, consider using a proper RTF parser
+        var text = rtfContent
+
+        // Remove RTF header and footer
+        val startIndex = text.indexOf("{\\rtf")
+        val endIndex = text.lastIndexOf("}")
+        if (startIndex >= 0 && endIndex > startIndex) {
+            text = text.substring(startIndex, endIndex + 1)
+        }
+
+        // Remove RTF control words and groups
+        text = text.replace(Regex("\\\\[a-z]+(-?\\d+)?[ ]?"), "")
+        text = text.replace(Regex("[{}]"), "")
+
+        // Convert special characters
+        text = text.replace("\\'92", "'")
+        text = text.replace("\\'93", """)
+        text = text.replace("\\'94", """)
+        text = text.replace("\\'96", "–")
+        text = text.replace("\\'97", "—")
+        text = text.replace("\\line", "\n")
+        text = text.replace("\\par", "\n\n")
+
+        // Clean up extra whitespace
+        text = text.replace(Regex("\\s+"), " ")
+        text = text.replace(Regex("\n{3,}"), "\n\n")
+
+        return text.trim()
+    }
+
+    // Extract title from HTML
+    private fun extractTitleFromHtml(htmlContent: String): String? {
+        val titleRegex = Regex("<title>(.*?)</title>", RegexOption.IGNORE_CASE)
+        val match = titleRegex.find(htmlContent)
+        return match?.groupValues?.get(1)?.trim()
+    }
+
+    // Create a book from document content
+    private suspend fun createBookFromDocument(
+        fileName: String,
+        content: String,
+        extension: String
+    ): Book {
+        var title = fileName.removeSuffix(".$extension")
+        var bookContent = content
+        var format = ContentFormat.PLAIN_TEXT
+        var formattedContent: String? = null
+
+        when (extension) {
+            "txt" -> {
+                // For TXT files, try to extract title from first line
+                val lines = content.lines()
+                if (lines.isNotEmpty() && lines[0].length < 100) {
+                    // Use first line as title if it's not too long
+                    title = lines[0].trim()
+                    bookContent = lines.drop(1).joinToString("\n").trim()
+                }
+            }
+            "rtf" -> {
+                // Convert RTF to plain text
+                bookContent = convertRtfToPlainText(content)
+
+                // Try to extract title from first line
+                val lines = bookContent.lines()
+                if (lines.isNotEmpty() && lines[0].length < 100) {
+                    title = lines[0].trim()
+                    bookContent = lines.drop(1).joinToString("\n").trim()
+                }
+            }
+            "html", "htm" -> {
+                // For HTML files, preserve the formatting
+                format = ContentFormat.HTML
+                formattedContent = content
+
+                // Extract plain text for storyContent (backward compatibility)
+                bookContent = content
+                    .replace(Regex("<[^>]+>"), "") // Remove HTML tags
+                    .replace(Regex("\\s+"), " ") // Normalize whitespace
+                    .trim()
+
+                // Try to extract title from HTML
+                extractTitleFromHtml(content)?.let {
+                    title = it
+                }
+            }
+        }
+
+        // Clean up the title
+        title = title.replace(Regex("[^a-zA-Z0-9\\s-]"), "").trim()
+        if (title.isEmpty()) {
+            title = "Untitled Book"
+        }
+
+        return Book(
+            title = title,
+            subtitle = "Imported from $fileName",
+            storyContent = bookContent,
+            formattedContent = formattedContent,
+            contentFormat = format,
+            createdDate = Date(),
+            lastEdited = Date()
+        )
+    }
+
     private inner class UploadWebServer(
         port: Int,
         private val uploadsDir: File,
@@ -132,49 +268,143 @@ class UploadActivity : AppCompatActivity() {
             }
         }
 
+        private fun saveImageToMediaStore(tempFile: File, fileName: String): String? {
+            val resolver = activity.contentResolver
+            val extension = getFileExtension(fileName)
+            val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "image/*"
+
+            val imageCollection = MediaStore.Images.Media.getContentUri(
+                MediaStore.VOLUME_EXTERNAL_PRIMARY
+            )
+
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val sanitizedFileName = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+            val uniqueFileName = "${timestamp}_$sanitizedFileName"
+
+            val newImageDetails = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, uniqueFileName)
+                put(MediaStore.Images.Media.MIME_TYPE, mimeType)
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Upload")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+
+            val imageUri = resolver.insert(imageCollection, newImageDetails)
+
+            imageUri?.let { uri ->
+                try {
+                    resolver.openOutputStream(uri)?.use { outputStream ->
+                        tempFile.inputStream().use { inputStream ->
+                            inputStream.copyTo(outputStream)
+                        }
+                    }
+                    newImageDetails.clear()
+                    newImageDetails.put(MediaStore.Images.Media.IS_PENDING, 0)
+                    resolver.update(uri, newImageDetails, null, null)
+                    return uniqueFileName
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to save image to MediaStore", e)
+                    resolver.delete(uri, null, null)
+                    return null
+                }
+            }
+            return null
+        }
+
         private fun handleFileUpload(session: IHTTPSession): Response {
             try {
                 val files = HashMap<String, String>()
                 session.parseBody(files)
 
-                val uploadCount = session.parameters["file"]?.size ?: 0
-                val uploadedFiles = mutableListOf<String>()
+                val uploadedFileNames = mutableListOf<String>()
+                val createdBooks = mutableListOf<String>()
 
-                // Process each uploaded file
                 session.parameters["file"]?.forEachIndexed { index, fileName ->
-                    val tempFile = File(files["file"])
-                    if (tempFile.exists()) {
-                        // Generate unique filename with timestamp
-                        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                        val sanitizedFileName = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-                        val uniqueFileName = "${timestamp}_$sanitizedFileName"
-                        val destFile = File(uploadsDir, uniqueFileName)
+                    val tempFilePath = files["file"]
+                    if (tempFilePath != null) {
+                        val tempFile = File(tempFilePath)
+                        if (tempFile.exists()) {
+                            when {
+                                isImageFile(fileName) -> {
+                                    // Handle image files as before
+                                    val savedFileName = saveImageToMediaStore(tempFile, fileName)
+                                    if (savedFileName != null) {
+                                        uploadedFileNames.add(savedFileName)
+                                        activity.runOnUiThread {
+                                            Toast.makeText(activity, "Saved to Pictures: $savedFileName", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                                isDocumentFile(fileName) -> {
+                                    // Handle document files
+                                    try {
+                                        // Read the file content immediately before it gets deleted
+                                        val content = tempFile.readText()
+                                        val extension = getFileExtension(fileName)
 
-                        // Copy temp file to destination
-                        tempFile.inputStream().use { input ->
-                            FileOutputStream(destFile).use { output ->
-                                input.copyTo(output)
+                                        // Now process in a coroutine
+                                        lifecycleScope.launch {
+                                            try {
+                                                val book = createBookFromDocument(fileName, content, extension)
+
+                                                // Insert book into database
+                                                mainViewModel.insert(book) { bookId ->
+                                                    createdBooks.add(book.title)
+                                                    activity.runOnUiThread {
+                                                        Toast.makeText(
+                                                            activity,
+                                                            "Created book: ${book.title}",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.e(TAG, "Error creating book from document", e)
+                                                activity.runOnUiThread {
+                                                    Toast.makeText(
+                                                        activity,
+                                                        "Failed to create book from $fileName",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Error reading document file", e)
+                                        activity.runOnUiThread {
+                                            Toast.makeText(
+                                                activity,
+                                                "Failed to read file: $fileName",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                }
+                                else -> {
+                                    Log.w(TAG, "Unsupported file type: $fileName")
+                                }
                             }
-                        }
 
-                        uploadedFiles.add(uniqueFileName)
-
-                        // Delete temp file
-                        tempFile.delete()
-
-                        // Notify UI
-                        activity.runOnUiThread {
-                            Toast.makeText(activity, "Uploaded: $uniqueFileName", Toast.LENGTH_SHORT).show()
+                            // Delete the temp file
+                            tempFile.delete()
                         }
                     }
+                }
+
+                // Wait a bit for books to be created (not ideal, but simple)
+                Thread.sleep(500)
+
+                val totalFiles = uploadedFileNames.size + createdBooks.size
+                if (totalFiles == 0) {
+                    throw Exception("No files were processed successfully.")
                 }
 
                 // Return JSON response
                 val jsonResponse = """
                     {
                         "success": true,
-                        "message": "Successfully uploaded ${uploadedFiles.size} file(s)",
-                        "files": [${uploadedFiles.joinToString(",") { "\"$it\"" }}]
+                        "message": "Successfully processed $totalFiles file(s)",
+                        "images": [${uploadedFileNames.joinToString(",") { "\"$it\"" }}],
+                        "books": [${createdBooks.joinToString(",") { "\"$it\"" }}]
                     }
                 """.trimIndent()
 
@@ -247,8 +477,39 @@ class UploadActivity : AppCompatActivity() {
                     .subtitle {
                         color: #666;
                         text-align: center;
-                        margin-bottom: 30px;
+                        margin-bottom: 20px;
                         font-size: 16px;
+                    }
+                    
+                    .file-types {
+                        background: #f5f7fa;
+                        border-radius: 10px;
+                        padding: 15px;
+                        margin-bottom: 25px;
+                        font-size: 14px;
+                        color: #555;
+                    }
+                    
+                    .file-types h3 {
+                        font-size: 14px;
+                        margin-bottom: 8px;
+                        color: #333;
+                    }
+                    
+                    .file-types-grid {
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 10px;
+                    }
+                    
+                    .file-type-group {
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    }
+                    
+                    .file-type-icon {
+                        font-size: 20px;
                     }
                     
                     .upload-area {
@@ -311,6 +572,31 @@ class UploadActivity : AppCompatActivity() {
                         display: flex;
                         align-items: center;
                         justify-content: space-between;
+                    }
+                    
+                    .file-info {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        flex: 1;
+                    }
+                    
+                    .file-type-badge {
+                        background: #667eea;
+                        color: white;
+                        padding: 2px 8px;
+                        border-radius: 4px;
+                        font-size: 11px;
+                        font-weight: bold;
+                        text-transform: uppercase;
+                    }
+                    
+                    .file-type-badge.image {
+                        background: #48bb78;
+                    }
+                    
+                    .file-type-badge.document {
+                        background: #4299e1;
                     }
                     
                     .file-name {
@@ -403,11 +689,31 @@ class UploadActivity : AppCompatActivity() {
                     <h1>📤 Upload Files</h1>
                     <p class="subtitle">Send files to Gnimble Typewriter</p>
                     
+                    <div class="file-types">
+                        <h3>Supported file types:</h3>
+                        <div class="file-types-grid">
+                            <div class="file-type-group">
+                                <span class="file-type-icon">🖼️</span>
+                                <div>
+                                    <strong>Images</strong><br>
+                                    <small>JPG, PNG, GIF → Pictures</small>
+                                </div>
+                            </div>
+                            <div class="file-type-group">
+                                <span class="file-type-icon">📄</span>
+                                <div>
+                                    <strong>Documents</strong><br>
+                                    <small>TXT, RTF, HTML → Books</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="upload-area" id="uploadArea">
                         <div class="upload-icon">📁</div>
                         <p class="upload-text">Drag & drop files here or</p>
                         <label for="fileInput" class="select-button">Choose Files</label>
-                        <input type="file" id="fileInput" class="file-input" multiple>
+                        <input type="file" id="fileInput" class="file-input" multiple accept=".txt,.rtf,.html,.htm,.jpg,.jpeg,.png,.gif,.bmp,.webp">
                     </div>
                     
                     <div class="file-list" id="fileList"></div>
@@ -431,6 +737,9 @@ class UploadActivity : AppCompatActivity() {
                     const statusMessage = document.getElementById('statusMessage');
                     
                     let selectedFiles = [];
+                    
+                    const documentExtensions = ['txt', 'rtf', 'html', 'htm'];
+                    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
                     
                     // File input change
                     fileInput.addEventListener('change', (e) => {
@@ -460,6 +769,17 @@ class UploadActivity : AppCompatActivity() {
                         }
                     });
                     
+                    function getFileExtension(filename) {
+                        return filename.split('.').pop().toLowerCase();
+                    }
+                    
+                    function getFileType(filename) {
+                        const ext = getFileExtension(filename);
+                        if (imageExtensions.includes(ext)) return 'image';
+                        if (documentExtensions.includes(ext)) return 'document';
+                        return 'unknown';
+                    }
+                    
                     function handleFiles(files) {
                         selectedFiles = Array.from(files);
                         displayFiles();
@@ -468,18 +788,6 @@ class UploadActivity : AppCompatActivity() {
                     
                     function displayFiles() {
                         fileList.innerHTML = '';
-                        selectedFiles.forEach((file, index) => {
-                            const fileItem = document.createElement('div');
-                            fileItem.className = 'file-item';
-                            fileItem.innerHTML = `
-                                <div>
-                                    <span class="file-name">File Name</span>
-                                    <span class="file-size">File Size</span>
-                                </div>
-                                <span class="remove-file" onclick="removeFile(0)">×</span>
-                            `;
-                            fileList.appendChild(fileItem);
-                        });
                     }
                     
                     function removeFile(index) {
@@ -521,7 +829,8 @@ class UploadActivity : AppCompatActivity() {
                             xhr.addEventListener('load', () => {
                                 if (xhr.status === 200) {
                                     const response = JSON.parse(xhr.responseText);
-                                    showStatus('Files uploaded successfully!', 'success');
+                                    const message = response.message || 'Files uploaded successfully!';
+                                    showStatus(message, 'success');
                                     selectedFiles = [];
                                     displayFiles();
                                     uploadButton.style.display = 'none';

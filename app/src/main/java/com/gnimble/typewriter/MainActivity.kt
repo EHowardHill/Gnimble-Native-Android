@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -15,6 +16,7 @@ import com.gnimble.typewriter.adapter.BookAdapter
 import com.gnimble.typewriter.data.Book
 import com.gnimble.typewriter.databinding.ActivityMainBinding
 import com.gnimble.typewriter.viewmodel.MainViewModel
+import com.gnimble.typewriter.utils.UpdateManager
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 
@@ -43,19 +45,43 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.actionSettings.setOnClickListener {
-            val intent = Intent(Settings.ACTION_SETTINGS)
-            startActivity(intent)
-        }
-
-        binding.actionUpload.setOnClickListener {
-            val intent = Intent(this, UploadActivity::class.java)
-            startActivity(intent)
+        binding.bottomAppBar.setOnMenuItemClickListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.action_upload -> {
+                    // Handle upload action
+                    val intent = Intent(this, UploadActivity::class.java)
+                    startActivity(intent)
+                    true
+                }
+                R.id.action_settings -> {
+                    // Handle settings action
+                    val intent = Intent(Settings.ACTION_SETTINGS)
+                    startActivity(intent)
+                    true
+                }
+                R.id.action_update -> {
+                    // Handle Gnimble system update action
+                    checkForUpdates()
+                    true
+                }
+                else -> false
+            }
         }
 
         setupRecyclerView()
         observeBooks()
         setupFab()
+    }
+
+    private fun checkForUpdates() {
+        val updateManager = UpdateManager(this)
+        updateManager.checkForUpdates { updateAvailable ->
+            if (updateAvailable == false) {
+                Toast.makeText(this, "Update not found", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Update found", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun setupRecyclerView() {

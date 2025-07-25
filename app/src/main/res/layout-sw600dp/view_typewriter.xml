@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- view_typewriter.xml -->
 <merge xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -8,8 +7,10 @@
     tools:parentTag="androidx.constraintlayout.widget.ConstraintLayout">
 
     <androidx.cardview.widget.CardView
-        android:layout_width="5in"
+        android:layout_width="0dp"
         android:layout_height="0dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
         android:layout_marginTop="@dimen/scrollview_margin_top"
         android:layout_marginBottom="32dp"
         app:cardBackgroundColor="@color/scrollview_background"
@@ -18,6 +19,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintWidth_max="5in"
         tools:ignore="InOrMmUsage">
 
         <View
@@ -26,12 +28,15 @@
             android:layout_height="match_parent"
             android:background="@color/scrollview_background" />
 
-        <ScrollView
+        <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:fadeScrollbars="true"
             android:fillViewport="true"
-            android:scrollbars="vertical"
-            android:clipToPadding="false">
+            android:overScrollMode="ifContentScrolls"
+            android:scrollbarSize="4dp"
+            android:scrollbars="vertical">
 
             <FrameLayout
                 android:layout_width="match_parent"
@@ -43,21 +48,21 @@
                     android:id="@+id/editText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:minHeight="200dp"
                     android:autofillHints="It was a dark and stormy night..."
                     android:background="@android:color/transparent"
+                    android:breakStrategy="high_quality"
                     android:gravity="top|start"
                     android:hint="@string/document_body"
-                    android:textSize="12pt"
+                    android:hyphenationFrequency="normal"
                     android:inputType="textMultiLine|textCapSentences"
-                    android:scrollHorizontally="false"
                     android:lineSpacingMultiplier="1.5"
-                    android:breakStrategy="high_quality"
-                    android:hyphenationFrequency="normal" />
+                    android:minHeight="200dp"
+                    android:scrollHorizontally="false"
+                    android:textSize="12pt" />
 
             </FrameLayout>
 
-        </ScrollView>
+        </androidx.core.widget.NestedScrollView>
 
     </androidx.cardview.widget.CardView>
 

@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.Spannable
+import android.text.style.AlignmentSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
@@ -15,12 +16,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.widget.EditText
 import android.widget.TextView
-import android.graphics.RenderEffect
-import android.graphics.Shader
-import android.graphics.text.LineBreaker
-import android.os.Build
 import android.text.style.RelativeSizeSpan
-import androidx.annotation.RequiresApi
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.gnimble.typewriter.databinding.ViewTypewriterBinding
 import com.gnimble.typewriter.data.FontItem
@@ -57,6 +53,9 @@ class TypewriterView @JvmOverloads constructor(
             // Add some padding to prevent text from touching edges
             val horizontalPadding = (8 * resources.displayMetrics.density).toInt()
             setPadding(horizontalPadding, paddingTop, horizontalPadding, paddingBottom)
+
+            // Set default gravity to TOP | START and never change it
+            gravity = Gravity.TOP or Gravity.START
         }
 
         // Add text change listener to handle paragraph indentation
@@ -76,6 +75,15 @@ class TypewriterView @JvmOverloads constructor(
             first: Boolean, layout: Layout
         ) {
             // No drawing needed, just spacing
+        }
+    }
+
+    // Custom span for justified text (workaround since there's no JustificationSpan)
+    // This uses a standard alignment span but we'll track it differently
+    class JustifySpan : AlignmentSpan {
+        override fun getAlignment(): Layout.Alignment {
+            // Return normal alignment, we'll handle justification differently
+            return Layout.Alignment.ALIGN_NORMAL
         }
     }
 
@@ -163,13 +171,13 @@ class TypewriterView @JvmOverloads constructor(
         if (selectionStart == selectionEnd) return
 
         val styleSpans = spannable.getSpans(selectionStart, selectionEnd, StyleSpan::class.java)
-        val italicSpans = styleSpans.filter { it.style == android.graphics.Typeface.ITALIC }
+        val italicSpans = styleSpans.filter { it.style == Typeface.ITALIC }
 
         if (italicSpans.isNotEmpty()) {
             italicSpans.forEach { spannable.removeSpan(it) }
         } else {
             spannable.setSpan(
-                StyleSpan(android.graphics.Typeface.ITALIC),
+                StyleSpan(Typeface.ITALIC),
                 selectionStart,
                 selectionEnd,
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -178,26 +186,103 @@ class TypewriterView @JvmOverloads constructor(
     }
 
     fun setAlignment(alignment: Alignment) {
-        editText.justificationMode = LineBreaker.JUSTIFICATION_MODE_INTER_WORD
+        val spannable = editText.text as Spannable
+        val selectionStart = editText.selectionStart
+        val selectionEnd = editText.selectionEnd
 
-        when (alignment) {
-            Alignment.LEFT -> {
-                editText.gravity = Gravity.TOP or Gravity.START
-                editText.justificationMode = LineBreaker.JUSTIFICATION_MODE_NONE
-            }
-            Alignment.CENTER -> {
-                editText.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                editText.justificationMode = LineBreaker.JUSTIFICATION_MODE_NONE
-            }
-            Alignment.RIGHT -> {
-                editText.gravity = Gravity.TOP or Gravity.END
-                editText.justificationMode = LineBreaker.JUSTIFICATION_MODE_NONE
-            }
-            Alignment.JUSTIFY -> {
-                editText.gravity = Gravity.TOP or Gravity.START
-                editText.justificationMode = LineBreaker.JUSTIFICATION_MODE_INTER_WORD
+        // Find paragraph boundaries for the selection
+        val paragraphBounds = findParagraphBounds(spannable, selectionStart, selectionEnd)
+
+        for ((paraStart, paraEnd) in paragraphBounds) {
+            // Remove any existing alignment spans in this paragraph
+            val existingAlignmentSpans = spannable.getSpans(paraStart, paraEnd, AlignmentSpan::class.java)
+            existingAlignmentSpans.forEach { spannable.removeSpan(it) }
+
+            // Remove any JustifySpan markers
+            val existingJustifySpans = spannable.getSpans(paraStart, paraEnd, JustifySpan::class.java)
+            existingJustifySpans.forEach { spannable.removeSpan(it) }
+
+            // Apply new alignment span
+            when (alignment) {
+                Alignment.LEFT -> {
+                    // LEFT is default, so just removing existing spans is enough
+                }
+                Alignment.CENTER -> {
+                    spannable.setSpan(
+                        AlignmentSpan.Standard(Layout.Alignment.ALIGN_CENTER),
+                        paraStart,
+                        paraEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                    )
+                }
+                Alignment.RIGHT -> {
+                    spannable.setSpan(
+                        AlignmentSpan.Standard(Layout.Alignment.ALIGN_OPPOSITE),
+                        paraStart,
+                        paraEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                    )
+                }
+                Alignment.JUSTIFY -> {
+                    // Since Android doesn't have a JustificationSpan, we'll use a marker
+                    // and handle justification in a custom TextView if needed
+                    spannable.setSpan(
+                        JustifySpan(),
+                        paraStart,
+                        paraEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                    )
+                    // You could also apply both start alignment and a custom attribute
+                    spannable.setSpan(
+                        AlignmentSpan.Standard(Layout.Alignment.ALIGN_NORMAL),
+                        paraStart,
+                        paraEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                    )
+                }
             }
         }
+    }
+
+    // Helper function to find paragraph boundaries
+    private fun findParagraphBounds(text: CharSequence, selectionStart: Int, selectionEnd: Int): List<Pair<Int, Int>> {
+        val paragraphs = mutableListOf<Pair<Int, Int>>()
+
+        // Find the paragraph containing the selection start
+        var paraStart = selectionStart
+        while (paraStart > 0 && text[paraStart - 1] != '\n') {
+            paraStart--
+        }
+
+        // Find all paragraphs in the selection
+        var currentStart = paraStart
+        while (currentStart <= selectionEnd && currentStart < text.length) {
+            // Find the end of the current paragraph
+            var paraEnd = currentStart
+            while (paraEnd < text.length && text[paraEnd] != '\n') {
+                paraEnd++
+            }
+
+            // Include the newline character in the paragraph if it exists
+            if (paraEnd < text.length) {
+                paraEnd++
+            }
+
+            // Add this paragraph if it's within our selection
+            if (currentStart < selectionEnd || selectionStart == selectionEnd) {
+                paragraphs.add(Pair(currentStart, paraEnd))
+            }
+
+            // Move to the next paragraph
+            currentStart = paraEnd
+
+            // If we've passed the selection end, we're done
+            if (currentStart > selectionEnd && selectionStart != selectionEnd) {
+                break
+            }
+        }
+
+        return paragraphs
     }
 
     // Custom TypefaceSpan to support custom fonts
@@ -334,5 +419,36 @@ class TypewriterView @JvmOverloads constructor(
         editText.setText(content, TextView.BufferType.SPANNABLE)
         // Force apply indents after setting content
         applyParagraphIndents(editText.text)
+    }
+
+    // Optional: Get the current alignment of the paragraph at cursor position
+    fun getCurrentAlignment(): Alignment {
+        val spannable = editText.text as Spannable
+        val cursorPos = editText.selectionStart
+
+        // Find paragraph bounds
+        var paraStart = cursorPos
+        while (paraStart > 0 && spannable[paraStart - 1] != '\n') {
+            paraStart--
+        }
+
+        // Check for alignment spans
+        val alignmentSpans = spannable.getSpans(paraStart, cursorPos, AlignmentSpan::class.java)
+        if (alignmentSpans.isNotEmpty()) {
+            val span = alignmentSpans[0]
+            return when {
+                span is JustifySpan -> Alignment.JUSTIFY
+                span is AlignmentSpan.Standard -> {
+                    when (span.alignment) {
+                        Layout.Alignment.ALIGN_CENTER -> Alignment.CENTER
+                        Layout.Alignment.ALIGN_OPPOSITE -> Alignment.RIGHT
+                        else -> Alignment.LEFT
+                    }
+                }
+                else -> Alignment.LEFT
+            }
+        }
+
+        return Alignment.LEFT
     }
 }

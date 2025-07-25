@@ -5,7 +5,7 @@
     <string name="previous">Previous</string>
     <string name="bold">Bold</string>
     <string name="italic">Italic</string>
-    <string name="document_body">Document Body</string>
+    <string name="document_body">It was a dark and stormy night…</string>
     <string name="insert_image">Insert Image</string>
     <string name="align_right">Align Right</string>
     <string name="align_center">Align Center</string>
@@ -30,7 +30,7 @@
     <string name="open_settings">Open Settings</string>
     <string name="stop_sharing">Stop Sharing</string>
     <string name="qr_code_for_sharing">QR Code for Sharing</string>
-    <string name="starting_server">Starting server...</string>
+    <string name="starting_server">Starting server…</string>
     <string name="share_your_book">Share Your Story</string>
     <string name="create_new_story">Create New Story</string>
     <string name="align_full">Align Full</string>
@@ -43,5 +43,8 @@
     <string name="stop_upload_server">Stop Upload Server</string>
     <string name="qr_code_for_upload">QR Code for Upload</string>
     <string name="starting_upload_server">Start Upload Server</string>
-    <string name="receive_files">Recieve Files</string>
+    <string name="receive_files">Receive Files</string>
+    <string name="underline">Underline</string>
+    <string name="open_update">Update Gnimble app</string>
+    <string name="action_update">Update Gnimble</string>
 </resources>

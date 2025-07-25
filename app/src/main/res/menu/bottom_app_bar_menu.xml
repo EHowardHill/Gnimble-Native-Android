@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- bottom_app_bar_menu.xml -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_upload"
+        android:icon="@drawable/image_24px"
+        android:title="@string/action_upload"
+        android:contentDescription="@string/open_upload"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/action_settings"
+        android:icon="@drawable/settings_24px"
+        android:title="@string/action_settings"
+        android:contentDescription="@string/open_settings"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/action_update"
+        android:icon="@drawable/system_update_alt_24px"
+        android:title="@string/action_update"
+        android:contentDescription="@string/open_update"
+        app:showAsAction="ifRoom" />
+
+</menu>

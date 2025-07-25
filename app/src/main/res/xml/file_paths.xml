@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Create this file at: res/xml/file_paths.xml -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- External files directory for downloads -->
+    <external-files-path
+        name="downloads"
+        path="Download/" />
+
+    <!-- External storage root (for broader compatibility) -->
+    <external-path
+        name="external_files"
+        path="." />
+
+    <!-- App's external files directory -->
+    <external-files-path
+        name="external_app_files"
+        path="." />
+</paths>

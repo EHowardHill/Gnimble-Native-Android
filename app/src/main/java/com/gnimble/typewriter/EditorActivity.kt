@@ -24,7 +24,9 @@ import com.gnimble.typewriter.data.FontItem
 import com.gnimble.typewriter.databinding.ActivityEditorBinding
 import com.gnimble.typewriter.utils.SimpleHtmlHandler
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import kotlin.math.floor
 
 class EditorActivity : AppCompatActivity() {
@@ -209,11 +211,14 @@ class EditorActivity : AppCompatActivity() {
                     includeWrapper = false  // Don't include <html><body> tags
                 )
 
+                val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+
                 val updatedBook = book.copy(
                     storyContent = binding.typewriter.editText.text.toString(), // Plain text version
                     formattedContent = htmlContent, // HTML formatted version (without wrapper)
                     contentFormat = ContentFormat.HTML, // Mark as HTML format
-                    lastEdited = Date()
+                    lastEdited = Date(),
+                    subtitle = "Last edited: ${dateFormat.format(Date())}"
                 )
                 database.bookDao().updateBook(updatedBook)
                 currentBook = updatedBook
@@ -288,6 +293,7 @@ class EditorActivity : AppCompatActivity() {
 
             R.id.action_save -> {
                 saveBook()
+                Toast.makeText(this, "Document Saved", Toast.LENGTH_SHORT).show()
                 true
             }
 
