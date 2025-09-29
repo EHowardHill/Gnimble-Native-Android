@@ -173,13 +173,6 @@ class EditorActivity : AppCompatActivity() {
         binding.actionAlignRight.setOnClickListener {
             binding.typewriter.setAlignment(TypewriterView.Alignment.RIGHT)
         }
-
-        binding.actionInsertImage.setOnClickListener {
-            // Launch image picker
-            val intent = Intent(Intent.ACTION_PICK)
-            intent.type = "image/*"
-            startActivityForResult(intent, REQUEST_CODE_PICK_IMAGE)
-        }
     }
 
     private fun setupAutoSave() {
@@ -264,15 +257,6 @@ class EditorActivity : AppCompatActivity() {
                         binding.typewriter.setContent(book.storyContent)
                     }
                 }
-            }
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQUEST_CODE_PICK_IMAGE && resultCode == RESULT_OK) {
-            data?.data?.let { uri ->
-                binding.typewriter.insertImage(uri)
             }
         }
     }

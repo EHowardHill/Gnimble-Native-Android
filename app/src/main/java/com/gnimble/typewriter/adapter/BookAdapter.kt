@@ -2,14 +2,12 @@
 package com.gnimble.typewriter.adapter
 
 import android.content.Intent
-import android.net.Uri
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.bumptech.glide.Glide
 import com.gnimble.typewriter.R
 import com.gnimble.typewriter.ShareActivity
 import com.gnimble.typewriter.data.Book
@@ -19,13 +17,11 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import java.text.SimpleDateFormat
 import java.util.Locale
-import androidx.core.net.toUri
 
 class BookAdapter(
     private val onBookClick: (Book) -> Unit,
     private val onRenameBook: (Book, String) -> Unit,
-    private val onDeleteBook: (Book) -> Unit,
-    private val onChangeCover: (Book) -> Unit
+    private val onDeleteBook: (Book) -> Unit
 ) : ListAdapter<Book, BookAdapter.BookViewHolder>(BookDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): BookViewHolder {
@@ -54,18 +50,6 @@ class BookAdapter(
                 "Last edited: ${dateFormat.format(book.lastEdited)}"
             }
 
-            // Load cover image if available, otherwise show default
-            if (!book.coverPath.isNullOrEmpty()) {
-                Glide.with(binding.bookImage.context)
-                    .load(book.coverPath.toUri())
-                    .placeholder(R.drawable.gallery_thumbnail_24px)
-                    .error(R.drawable.gallery_thumbnail_24px)
-                    .centerCrop()
-                    .into(binding.bookImage)
-            } else {
-                binding.bookImage.setImageResource(R.drawable.gallery_thumbnail_24px)
-            }
-
             binding.shareButton.setOnClickListener {
                 val context = binding.root.context
                 val intent = Intent(context, ShareActivity::class.java).apply {
@@ -73,7 +57,6 @@ class BookAdapter(
                     putExtra("book_title", book.title)
                     putExtra("book_subtitle", book.subtitle)
                     putExtra("book_content", book.storyContent)
-                    putExtra("book_cover_path", book.coverPath)
                 }
                 context.startActivity(intent)
             }
@@ -98,12 +81,6 @@ class BookAdapter(
             )
 
             bottomSheetDialog.setContentView(bottomSheetView)
-
-            // Handle Change Cover click
-            bottomSheetView.findViewById<ViewGroup>(R.id.menu_change_cover)?.setOnClickListener {
-                bottomSheetDialog.dismiss()
-                onChangeCover(book)
-            }
 
             // Handle Rename click
             bottomSheetView.findViewById<ViewGroup>(R.id.menu_rename)?.setOnClickListener {

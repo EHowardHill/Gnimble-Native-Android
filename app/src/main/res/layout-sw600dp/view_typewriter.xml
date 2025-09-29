@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- view_typewriter.xml -->
 <merge xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -9,60 +10,46 @@
     <androidx.cardview.widget.CardView
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginStart="24dp"
-        android:layout_marginEnd="24dp"
-        android:layout_marginTop="@dimen/scrollview_margin_top"
-        android:layout_marginBottom="32dp"
-        app:cardBackgroundColor="@color/scrollview_background"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp"
         app:cardElevation="8dp"
+        app:cardBackgroundColor="@color/scrollview_background"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintWidth_max="5in"
-        tools:ignore="InOrMmUsage">
+        app:layout_constraintTop_toTopOf="parent">
 
+        <!-- Blur background layer -->
         <View
             android:id="@+id/blurBackground"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="@color/scrollview_background" />
 
-        <androidx.core.widget.NestedScrollView
+        <!-- Content layer on top -->
+        <ScrollView
+            android:id="@+id/scrollView"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:fadeScrollbars="true"
             android:fillViewport="true"
-            android:overScrollMode="ifContentScrolls"
-            android:scrollbarSize="4dp"
-            android:scrollbars="vertical">
+            android:background="@android:color/transparent">
 
-            <FrameLayout
+            <EditText
+                android:id="@+id/editText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="0.5in"
-                tools:ignore="InOrMmUsage">
+                android:autofillHints="Document body"
+                android:background="@android:color/transparent"
+                android:gravity="top"
+                android:hint="@string/document_body"
+                android:inputType="textMultiLine"
+                android:minHeight="?android:attr/listPreferredItemHeight"
+                android:padding="16dp"
+                tools:ignore="ScrollViewSize" />
 
-                <EditText
-                    android:id="@+id/editText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:autofillHints="It was a dark and stormy night..."
-                    android:background="@android:color/transparent"
-                    android:breakStrategy="high_quality"
-                    android:gravity="top|start"
-                    android:hint="@string/document_body"
-                    android:hyphenationFrequency="normal"
-                    android:inputType="textMultiLine|textCapSentences"
-                    android:lineSpacingMultiplier="1.5"
-                    android:minHeight="200dp"
-                    android:scrollHorizontally="false"
-                    android:textSize="12pt" />
-
-            </FrameLayout>
-
-        </androidx.core.widget.NestedScrollView>
+        </ScrollView>
 
     </androidx.cardview.widget.CardView>
 

@@ -2,10 +2,7 @@
 package com.gnimble.typewriter
 
 import android.graphics.Bitmap
-import android.net.Uri
 import android.os.Bundle
-import android.text.Html
-import android.util.Base64
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -21,11 +18,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
-import java.io.File
-import java.net.InetAddress
 import java.net.NetworkInterface
 import java.util.*
-import androidx.core.net.toUri
 
 class ShareActivity : AppCompatActivity() {
 
@@ -66,10 +60,9 @@ class ShareActivity : AppCompatActivity() {
         val contentFormat = intent.getStringExtra("book_content_format")?.let {
             ContentFormat.valueOf(it)
         } ?: ContentFormat.PLAIN_TEXT
-        val bookCoverPath = intent.getStringExtra("book_cover_path") ?: ""
 
         // Start the web server with formatted content support
-        startWebServer(bookTitle, bookSubtitle, bookContent, formattedContent, contentFormat, bookCoverPath)
+        startWebServer(bookTitle, bookSubtitle, bookContent, formattedContent, contentFormat)
 
         binding.stopServerButton.setOnClickListener {
             stopWebServer()
@@ -82,8 +75,7 @@ class ShareActivity : AppCompatActivity() {
         subtitle: String,
         content: String,
         formattedContent: String?,
-        contentFormat: ContentFormat,
-        coverPath: String
+        contentFormat: ContentFormat
     ) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -91,7 +83,7 @@ class ShareActivity : AppCompatActivity() {
                 val serverUrl = "http://$ipAddress:$PORT"
 
                 // Create and start the server with formatted content
-                webServer = BookWebServer(PORT, title, subtitle, content, formattedContent, contentFormat, coverPath, this@ShareActivity)
+                webServer = BookWebServer(PORT, title, subtitle, content, formattedContent, contentFormat)
                 webServer?.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
 
                 withContext(Dispatchers.Main) {
@@ -122,57 +114,12 @@ class ShareActivity : AppCompatActivity() {
         private val subtitle: String,
         private val content: String,
         private val formattedContent: String?,
-        private val contentFormat: ContentFormat,
-        private val coverPath: String,
-        private val context: android.content.Context
+        private val contentFormat: ContentFormat
     ) : NanoHTTPD(port) {
 
         override fun serve(session: IHTTPSession): Response {
-            val uri = session.uri
-
-            // Handle image requests
-            if (uri.startsWith("/image/")) {
-                return serveImage(uri)
-            }
-
-            // Handle cover image requests
-            if (uri == "/cover" && coverPath.isNotEmpty()) {
-                return serveCoverImage()
-            }
-
             // Serve the main HTML content
             return newFixedLengthResponse(Response.Status.OK, "text/html", generateHtmlContent())
-        }
-
-        private fun serveImage(uri: String): Response {
-            try {
-                // Extract image identifier from URI
-                val imageId = uri.substring("/image/".length)
-                // In a real implementation, you'd map this to actual image files
-                // For now, return a placeholder or 404
-                return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Image not found")
-            } catch (e: Exception) {
-                return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error serving image")
-            }
-        }
-
-        private fun serveCoverImage(): Response {
-            try {
-                val coverUri = coverPath.toUri()
-                val inputStream = context.contentResolver.openInputStream(coverUri)
-                if (inputStream != null) {
-                    val bytes = inputStream.readBytes()
-                    inputStream.close()
-
-                    // Determine MIME type
-                    val mimeType = context.contentResolver.getType(coverUri) ?: "image/jpeg"
-
-                    return newFixedLengthResponse(Response.Status.OK, mimeType, bytes.inputStream(), bytes.size.toLong())
-                }
-            } catch (e: Exception) {
-                Log.e("BookWebServer", "Error serving cover image", e)
-            }
-            return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Cover image not found")
         }
 
         private fun generateHtmlContent(): String {
@@ -200,14 +147,6 @@ class ShareActivity : AppCompatActivity() {
                     convertPlainTextToHtml(content)
                 }
             }
-
-            val coverImageHtml = if (coverPath.isNotEmpty()) {
-                """
-                <div class="cover-image">
-                    <img src="/cover" alt="Book cover">
-                </div>
-                """
-            } else ""
 
             return """
             <!DOCTYPE html>
@@ -242,16 +181,6 @@ class ShareActivity : AppCompatActivity() {
                         font-weight: normal;
                         margin-top: 0;
                         margin-bottom: 30px;
-                    }
-                    .cover-image {
-                        text-align: center;
-                        margin-bottom: 30px;
-                    }
-                    .cover-image img {
-                        max-width: 300px;
-                        max-height: 400px;
-                        border-radius: 5px;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
                     }
                     .content {
                         text-align: justify;
@@ -289,13 +218,6 @@ class ShareActivity : AppCompatActivity() {
                         text-align: justify !important;
                         text-indent: 0 !important;
                     }
-                    .content img {
-                        max-width: 100%;
-                        height: auto;
-                        display: block;
-                        margin: 20px auto;
-                        border-radius: 5px;
-                    }
                     .metadata {
                         background-color: #ecf0f1;
                         padding: 15px;
@@ -319,8 +241,6 @@ class ShareActivity : AppCompatActivity() {
                 <div class="container">
                     <h1>${escapeHtml(title)}</h1>
                     ${if (subtitle.isNotEmpty()) "<h2>${escapeHtml(subtitle)}</h2>" else ""}
-                    
-                    $coverImageHtml
                     
                     <div class="content">
                         $bodyContent
@@ -479,6 +399,8 @@ class ShareActivity : AppCompatActivity() {
                 .replace(Regex("""<title[^>]*>.*?</title>"""), "")
                 // Remove any script tags for security
                 .replace(Regex("""<script[^>]*>.*?</script>""", RegexOption.DOT_MATCHES_ALL), "")
+                // Remove all image tags
+                .replace(Regex("""<img[^>]*>"""), "")
 
             // Convert font references BEFORE other processing
             processed = convertFontReferences(processed)
@@ -498,17 +420,6 @@ class ShareActivity : AppCompatActivity() {
                         size <= 0.8f -> """<span class="small-text">"""
                         else -> "<span>"
                     }
-                }
-
-            // Process images - convert both base64 and URI references
-            processed = processed
-                .replace(Regex("""<img[^>]*src="data:image/[^"]*"[^>]*>""")) { match ->
-                    // Keep base64 images as-is
-                    match.value
-                }
-                .replace(Regex("""<img[^>]*data-image-uri="([^"]+)"[^>]*>""")) { match ->
-                    val imageUri = match.groupValues[1]
-                    """<img src="/image/${imageUri.hashCode()}" alt="Embedded image">"""
                 }
 
             // Handle paragraph classes

@@ -16,31 +16,18 @@
         android:layout_height="wrap_content"
         android:padding="16dp">
 
-        <ImageView
-            android:id="@+id/book_image"
-            android:layout_width="100dp"
-            android:layout_height="120dp"
-            android:contentDescription="@string/book_cover_image"
-            android:scaleType="centerCrop"
-            android:background="@color/cardview_dark_background"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:srcCompat="@drawable/gallery_thumbnail_24px" />
-
         <TextView
             android:id="@+id/book_title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
             android:text="@string/book_title"
             android:textAppearance="@style/TextAppearance.MaterialComponents.Headline6"
             android:textColor="?attr/colorOnSurface"
             android:maxLines="2"
             android:ellipsize="end"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toEndOf="@id/book_image"
-            app:layout_constraintTop_toTopOf="@id/book_image"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
             tools:text="The Midnight Library" />
 
         <TextView

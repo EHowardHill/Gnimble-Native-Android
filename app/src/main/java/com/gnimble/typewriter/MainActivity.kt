@@ -2,12 +2,9 @@
 package com.gnimble.typewriter
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.provider.Settings
-import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -16,7 +13,6 @@ import com.gnimble.typewriter.adapter.BookAdapter
 import com.gnimble.typewriter.data.Book
 import com.gnimble.typewriter.databinding.ActivityMainBinding
 import com.gnimble.typewriter.viewmodel.MainViewModel
-import com.gnimble.typewriter.utils.UpdateManager
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 
@@ -25,19 +21,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val viewModel: MainViewModel by viewModels()
     private lateinit var bookAdapter: BookAdapter
-    private var bookToUpdateCover: Book? = null
-
-    // Activity result launcher for picking images from gallery
-    private val pickImageLauncher = registerForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { imageUri ->
-            bookToUpdateCover?.let { book ->
-                updateBookCover(book, imageUri)
-            }
-        }
-        bookToUpdateCover = null
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,9 +61,6 @@ class MainActivity : AppCompatActivity() {
             },
             onDeleteBook = { book ->
                 deleteBook(book)
-            },
-            onChangeCover = { book ->
-                openImagePicker(book)
             }
         )
 
@@ -153,7 +133,6 @@ class MainActivity : AppCompatActivity() {
         val newBook = Book(
             title = title,
             subtitle = "",
-            coverPath = null,
             storyContent = ""
         )
 
@@ -188,28 +167,5 @@ class MainActivity : AppCompatActivity() {
     private fun deleteBook(book: Book) {
         // Delete the book from the database
         viewModel.delete(book)
-    }
-
-    private fun openImagePicker(book: Book) {
-        bookToUpdateCover = book
-        pickImageLauncher.launch("image/*")
-    }
-
-    private fun updateBookCover(book: Book, imageUri: Uri) {
-        // Request persistent permission for the URI
-        try {
-            contentResolver.takePersistableUriPermission(
-                imageUri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-        } catch (e: SecurityException) {
-            // Some URIs don't support persistent permissions, which is fine
-        }
-
-        // Save the image URI as string
-        val updatedBook = book.copy(coverPath = imageUri.toString())
-
-        // Update the book in the database
-        viewModel.update(updatedBook)
     }
 }
