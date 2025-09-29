@@ -48,10 +48,9 @@
 
         <ImageButton
             android:id="@+id/menu_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_margin="16dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_margin="8dp"
             android:contentDescription="@string/menu_options"
             android:src="@drawable/more_horiz_24px"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -59,10 +58,9 @@
 
         <ImageButton
             android:id="@+id/share_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_margin="16dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_margin="8dp"
             android:contentDescription="@string/share_book"
             android:src="@drawable/ios_share_24px"
             app:layout_constraintBottom_toBottomOf="@id/menu_button"
