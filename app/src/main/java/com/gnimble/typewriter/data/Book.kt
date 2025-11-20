@@ -30,7 +30,12 @@ data class Book(
     val lastEdited: Date = Date(),
 
     @ColumnInfo(name = "created_date")
-    val createdDate: Date = Date()
+    val createdDate: Date = Date(),
+
+    // ** NEW FIELD **
+    // Stores the resource entry name (e.g., "crimson_text" or "default")
+    @ColumnInfo(name = "font_name")
+    val fontName: String = "default"
 )
 
 enum class ContentFormat {

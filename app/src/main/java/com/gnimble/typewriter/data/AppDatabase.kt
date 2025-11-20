@@ -22,7 +22,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "book_database"
-                ).build()
+                )
+                    .fallbackToDestructiveMigration() // Add this for dev (wipes data on schema change)
+                    .build()
                 INSTANCE = instance
                 instance
             }

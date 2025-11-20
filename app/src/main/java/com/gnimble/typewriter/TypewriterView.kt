@@ -316,37 +316,21 @@ class TypewriterView @JvmOverloads constructor(
         }
     }
 
-    fun applyFont(fontItem: FontItem) {
-        val spannable = editText.text as Spannable
-        val start = editText.selectionStart
-        val end = editText.selectionEnd
+    fun setGlobalFont(fontItem: FontItem) {
+        currentFont = fontItem
 
-        if (start != end) {
-            // Remove existing CustomTypefaceSpan and TypefaceSpan in selection
-            val existingCustomSpans = spannable.getSpans(start, end, CustomTypefaceSpan::class.java)
-            existingCustomSpans.forEach { spannable.removeSpan(it) }
-
-            val existingTypefaceSpans = spannable.getSpans(start, end, TypefaceSpan::class.java)
-            existingTypefaceSpans.forEach { spannable.removeSpan(it) }
-
-            // Apply new font using CustomTypefaceSpan with resource ID
-            if (fontItem.resourceId != 0 && fontItem.typeface != null) {
-                spannable.setSpan(
-                    CustomTypefaceSpan(fontItem.typeface, fontItem.resourceId), // Pass resourceId
-                    start,
-                    end,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
+        // Apply to the entire EditText
+        if (fontItem.resourceId == 0) {
+            editText.typeface = Typeface.DEFAULT
         } else {
-            // For new text when nothing is selected: Set the current font
-            currentFont = fontItem
-            if (fontItem.resourceId == 0) {
-                editText.typeface = Typeface.DEFAULT
-            } else {
-                editText.typeface = fontItem.typeface
-            }
+            editText.typeface = fontItem.typeface
         }
+
+        // CLEANUP: Remove any legacy CustomTypefaceSpans if they exist
+        // (This cleans up old documents that might have had mixed fonts)
+        val spannable = editText.text as Spannable
+        val spans = spannable.getSpans(0, spannable.length, CustomTypefaceSpan::class.java)
+        spans.forEach { spannable.removeSpan(it) }
     }
 
     fun applyHeadingStyle(headingStyle: HeadingStyle) {

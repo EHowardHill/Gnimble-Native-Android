@@ -80,6 +80,12 @@
             android:stateNotNeeded="true"
             android:theme="@style/Theme.Gnimble.Launcher">
         </activity>
+
+        <activity
+            android:name=".AboutActivity"
+            android:label="About"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar" />
     </application>
 
 </manifest>

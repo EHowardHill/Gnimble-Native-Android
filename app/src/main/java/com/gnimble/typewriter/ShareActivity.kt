@@ -36,6 +36,7 @@ class ShareActivity : AppCompatActivity() {
             "crimson_text" to FontMapping("Crimson Text", "https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&display=swap", "700"),
             "eb_garamond" to FontMapping("EB Garamond", "https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&display=swap", "400", "italic"),
             "young_serif" to FontMapping("Young Serif", "https://fonts.googleapis.com/css2?family=Young+Serif&display=swap"),
+            "noto_sans_mono" to FontMapping("Noto Sans Mono", "https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@100..900&display=swap")
         )
 
         data class FontMapping(
@@ -60,9 +61,9 @@ class ShareActivity : AppCompatActivity() {
         val contentFormat = intent.getStringExtra("book_content_format")?.let {
             ContentFormat.valueOf(it)
         } ?: ContentFormat.PLAIN_TEXT
+        val bookFontName = intent.getStringExtra("book_font_name") ?: "default"
 
-        // Start the web server with formatted content support
-        startWebServer(bookTitle, bookSubtitle, bookContent, formattedContent, contentFormat)
+        startWebServer(bookTitle, bookSubtitle, bookContent, formattedContent, contentFormat, bookFontName)
 
         binding.stopServerButton.setOnClickListener {
             stopWebServer()
@@ -75,7 +76,8 @@ class ShareActivity : AppCompatActivity() {
         subtitle: String,
         content: String,
         formattedContent: String?,
-        contentFormat: ContentFormat
+        contentFormat: ContentFormat,
+        fontName: String
     ) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -83,7 +85,7 @@ class ShareActivity : AppCompatActivity() {
                 val serverUrl = "http://$ipAddress:$PORT"
 
                 // Create and start the server with formatted content
-                webServer = BookWebServer(PORT, title, subtitle, content, formattedContent, contentFormat)
+                webServer = BookWebServer(PORT, title, subtitle, content, formattedContent, contentFormat, fontName)
                 webServer?.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
 
                 withContext(Dispatchers.Main) {
@@ -114,7 +116,8 @@ class ShareActivity : AppCompatActivity() {
         private val subtitle: String,
         private val content: String,
         private val formattedContent: String?,
-        private val contentFormat: ContentFormat
+        private val contentFormat: ContentFormat,
+        private val fontName: String
     ) : NanoHTTPD(port) {
 
         override fun serve(session: IHTTPSession): Response {
@@ -123,29 +126,25 @@ class ShareActivity : AppCompatActivity() {
         }
 
         private fun generateHtmlContent(): String {
-            // Extract used fonts from the formatted content
-            val usedFonts = extractUsedFonts(formattedContent ?: "")
+            // 1. Determine Font URL and CSS Family
+            var googleFontUrl = ""
+            var cssFontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif"
+            var cssFontWeight = "normal"
+            var cssFontStyle = "normal"
 
-            // Generate Google Fonts links
-            val fontLinks = generateFontLinks(usedFonts)
+            // Lookup font in mappings
+            if (fontName != "default" && FONT_MAPPINGS.containsKey(fontName)) {
+                val mapping = FONT_MAPPINGS[fontName]!!
+                googleFontUrl = """<link href="${mapping.googleFontUrl}" rel="stylesheet">"""
+                cssFontFamily = "'${mapping.familyName}', serif"
+                if (mapping.weight != "400") cssFontWeight = mapping.weight
+                if (mapping.style != "normal") cssFontStyle = mapping.style
+            }
 
-            // Generate CSS for font classes
-            val fontStyles = generateFontStyles(usedFonts)
-
+            // 2. Simplify body processing (we don't need convertFontReferences anymore)
             val bodyContent = when (contentFormat) {
-                ContentFormat.HTML -> {
-                    // Use the formatted HTML content directly - DO NOT escape it
-                    processFormattedHtml(formattedContent ?: content)
-                }
-                ContentFormat.JSON -> {
-                    // Convert JSON formatted content to HTML
-                    // This would require parsing the JSON and converting to HTML
-                    convertPlainTextToHtml(content) // Fallback for now
-                }
-                ContentFormat.PLAIN_TEXT -> {
-                    // Convert plain text to HTML with paragraph formatting
-                    convertPlainTextToHtml(content)
-                }
+                ContentFormat.HTML -> processFormattedHtml(formattedContent ?: content)
+                else -> convertPlainTextToHtml(content)
             }
 
             return """
@@ -155,10 +154,12 @@ class ShareActivity : AppCompatActivity() {
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>$title</title>
-                $fontLinks
+                $googleFontUrl
                 <style>
                     body {
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+                        font-family: $cssFontFamily;
+                        font-weight: $cssFontWeight;
+                        font-style: $cssFontStyle;
                         line-height: 1.6;
                         color: #333;
                         max-width: 800px;
@@ -233,8 +234,6 @@ class ShareActivity : AppCompatActivity() {
                         color: #7f8c8d;
                         font-size: 0.9em;
                     }
-                    /* Generated font styles */
-                    $fontStyles
                 </style>
             </head>
             <body>

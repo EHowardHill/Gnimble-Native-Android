@@ -78,27 +78,25 @@ class EditorActivity : AppCompatActivity() {
     private fun initializeFontList() {
         val fontItems = mutableListOf<FontItem>()
 
-        // Add default font first
-        fontItems.add(FontItem("Default", 0, Typeface.DEFAULT))
+        // Add default font
+        fontItems.add(FontItem("Default", "default", 0, Typeface.DEFAULT))
 
-        // Get all font resources dynamically
         val fontFields = R.font::class.java.fields
 
         for (field in fontFields) {
             try {
                 val resourceId = field.getInt(null)
+                val resourceEntryName = field.name // e.g. "crimson_text"
                 val fontName = formatFontName(field.name)
                 val typeface = loadFont(resourceId)
 
                 if (typeface != null) {
-                    fontItems.add(FontItem(fontName, resourceId, typeface))
+                    fontItems.add(FontItem(fontName, resourceEntryName, resourceId, typeface))
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
-
-        // Sort fonts alphabetically (keeping Default at the top)
         fontList = listOf(fontItems[0]) + fontItems.drop(1).sortedBy { it.name }
     }
 
@@ -146,7 +144,8 @@ class EditorActivity : AppCompatActivity() {
         binding.actionFontSelection.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val selectedFont = fontList[position]
-                binding.typewriter.applyFont(selectedFont)
+                // Apply globally instead of to selection
+                binding.typewriter.setGlobalFont(selectedFont)
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -198,20 +197,27 @@ class EditorActivity : AppCompatActivity() {
         lifecycleScope.launch {
             currentBook?.let { book ->
                 val htmlHandler = SimpleHtmlHandler(this@EditorActivity)
-                // Export without HTML wrapper for embedding
                 val htmlContent = htmlHandler.spannableToHtml(
                     binding.typewriter.editText.text as Spannable,
-                    includeWrapper = false  // Don't include <html><body> tags
+                    includeWrapper = false
                 )
 
-                val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+                // Get current font name from the dropdown/typewriter view state
+                // We find the font that matches the current Typeface or pull from dropdown position
+                val selectedPosition = binding.actionFontSelection.selectedItemPosition
+                val currentFontName = if (selectedPosition >= 0 && selectedPosition < fontList.size) {
+                    fontList[selectedPosition].resourceEntryName
+                } else {
+                    "default"
+                }
 
                 val updatedBook = book.copy(
-                    storyContent = binding.typewriter.editText.text.toString(), // Plain text version
-                    formattedContent = htmlContent, // HTML formatted version (without wrapper)
-                    contentFormat = ContentFormat.HTML, // Mark as HTML format
+                    storyContent = binding.typewriter.editText.text.toString(),
+                    formattedContent = htmlContent,
+                    contentFormat = ContentFormat.HTML,
                     lastEdited = Date(),
-                    subtitle = "Last edited: ${dateFormat.format(Date())}"
+                    subtitle = "Last edited: ${SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date())}",
+                    fontName = currentFontName // ** SAVE THE FONT **
                 )
                 database.bookDao().updateBook(updatedBook)
                 currentBook = updatedBook
@@ -241,8 +247,21 @@ class EditorActivity : AppCompatActivity() {
                     }
 
                     val spannable = htmlHandler.htmlToSpannable(contentToLoad)
-                    // Use setContent to ensure paragraph indents are applied
+                    val fontToSelect = fontList.find { it.resourceEntryName == book.fontName }
+                        ?: fontList[0] // Fallback to default
+
+                    // update dropdown UI
+                    val spinnerPosition = fontList.indexOf(fontToSelect)
+                    if (spinnerPosition >= 0) {
+                        binding.actionFontSelection.setSelection(spinnerPosition)
+                    }
+
+                    // ** FIX: Set the content FIRST **
                     binding.typewriter.setContent(spannable)
+
+                    // ** FIX: Apply font SECOND (sets typeface and cleans up legacy spans in the text) **
+                    binding.typewriter.setGlobalFont(fontToSelect)
+
                     supportActionBar?.title = book.title
                 } catch (e: Exception) {
                     // Fallback to simple HTML parsing

@@ -1,0 +1,3810 @@
+EditorActivity.kt:
+// EditorActivity.kt
+package com.gnimble.typewriter
+
+import android.content.Intent
+import android.graphics.Typeface
+import android.os.Bundle
+import android.text.Html
+import android.text.Spannable
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.EditText // Added import
+import android.widget.Toast // Added import
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.res.ResourcesCompat
+import androidx.lifecycle.lifecycleScope
+import com.gnimble.typewriter.data.AppDatabase
+import com.gnimble.typewriter.data.Book
+import com.gnimble.typewriter.data.ContentFormat
+import com.gnimble.typewriter.data.FontItem
+import com.gnimble.typewriter.databinding.ActivityEditorBinding
+import com.gnimble.typewriter.utils.SimpleHtmlHandler
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.floor
+
+class EditorActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityEditorBinding
+    private var bookId: Long = -1
+    private var currentBook: Book? = null
+    private val database by lazy { AppDatabase.getDatabase(this) }
+
+    // Font list - you'll need to add your actual font resource IDs here
+    private lateinit var fontList: List<FontItem>
+
+    // Heading styles
+    private val headingStyles = listOf(
+        HeadingStyle("Body", 1.0f),
+        HeadingStyle("Title", 2.0f),
+        HeadingStyle("Subtitle", 1.5f),
+        HeadingStyle("Chapter", 1.75f)
+    )
+
+    // New property to track find/replace state
+    private var lastFoundIndex: Int = 0
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        binding = ActivityEditorBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+
+        bookId = intent.getLongExtra("book_id", -1)
+        val bookTitle = intent.getStringExtra("book_title") ?: "Untitled"
+
+        supportActionBar?.title = bookTitle
+
+        if (bookId != -1L) {
+            loadBook()
+        }
+
+        initializeFontList()
+        setupHeadingDropdown()
+        setupFontDropdown()
+        setupFormatButtons()
+        setupAutoSave()
+    }
+
+    private fun initializeFontList() {
+        val fontItems = mutableListOf<FontItem>()
+
+        // Add default font
+        fontItems.add(FontItem("Default", "default", 0, Typeface.DEFAULT))
+
+        val fontFields = R.font::class.java.fields
+
+        for (field in fontFields) {
+            try {
+                val resourceId = field.getInt(null)
+                val resourceEntryName = field.name // e.g. "crimson_text"
+                val fontName = formatFontName(field.name)
+                val typeface = loadFont(resourceId)
+
+                if (typeface != null) {
+                    fontItems.add(FontItem(fontName, resourceEntryName, resourceId, typeface))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        fontList = listOf(fontItems[0]) + fontItems.drop(1).sortedBy { it.name }
+    }
+
+    private fun formatFontName(resourceName: String): String {
+        // Convert resource name to readable format
+        // e.g., "roboto_regular" -> "Roboto Regular"
+        // e.g., "open_sans_bold" -> "Open Sans Bold"
+        return resourceName
+            .replace("_", " ")
+            .split(" ")
+            .joinToString(" ") { word ->
+                word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            }
+    }
+
+    private fun loadFont(resourceId: Int): Typeface? {
+        return try {
+            ResourcesCompat.getFont(this, resourceId)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    fun setupHeadingDropdown() {
+        val headingNames = headingStyles.map { it.name }
+        val headingAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, headingNames)
+        headingAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.actionHeadingSelection.adapter = headingAdapter
+
+        binding.actionHeadingSelection.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val selectedStyle = headingStyles[position]
+                binding.typewriter.applyHeadingStyle(selectedStyle)
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+
+    private fun setupFontDropdown() {
+        val fontAdapter = FontAdapter(this, fontList)
+        binding.actionFontSelection.adapter = fontAdapter
+
+        binding.actionFontSelection.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val selectedFont = fontList[position]
+                // Apply globally instead of to selection
+                binding.typewriter.setGlobalFont(selectedFont)
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+
+    private fun setupFormatButtons() {
+        binding.actionBold.setOnClickListener {
+            binding.typewriter.toggleBold()
+        }
+
+        binding.actionItalic.setOnClickListener {
+            binding.typewriter.toggleItalic()
+        }
+
+        binding.actionAlignLeft.setOnClickListener {
+            binding.typewriter.setAlignment(TypewriterView.Alignment.LEFT)
+        }
+
+        binding.actionAlignCenter.setOnClickListener {
+            binding.typewriter.setAlignment(TypewriterView.Alignment.CENTER)
+        }
+
+        binding.actionAlignRight.setOnClickListener {
+            binding.typewriter.setAlignment(TypewriterView.Alignment.RIGHT)
+        }
+    }
+
+    private fun setupAutoSave() {
+        binding.typewriter.editText.addTextChangedListener(object : android.text.TextWatcher {
+            private var saveRunnable: Runnable? = null
+
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                // Cancel previous save
+                saveRunnable?.let { binding.typewriter.editText.removeCallbacks(it) }
+
+                // Schedule new save after 1 second of inactivity
+                saveRunnable = Runnable {
+                    saveBook()
+                }
+                binding.typewriter.editText.postDelayed(saveRunnable!!, 1000)
+            }
+        })
+    }
+
+    private fun saveBook() {
+        lifecycleScope.launch {
+            currentBook?.let { book ->
+                val htmlHandler = SimpleHtmlHandler(this@EditorActivity)
+                val htmlContent = htmlHandler.spannableToHtml(
+                    binding.typewriter.editText.text as Spannable,
+                    includeWrapper = false
+                )
+
+                // Get current font name from the dropdown/typewriter view state
+                // We find the font that matches the current Typeface or pull from dropdown position
+                val selectedPosition = binding.actionFontSelection.selectedItemPosition
+                val currentFontName = if (selectedPosition >= 0 && selectedPosition < fontList.size) {
+                    fontList[selectedPosition].resourceEntryName
+                } else {
+                    "default"
+                }
+
+                val updatedBook = book.copy(
+                    storyContent = binding.typewriter.editText.text.toString(),
+                    formattedContent = htmlContent,
+                    contentFormat = ContentFormat.HTML,
+                    lastEdited = Date(),
+                    subtitle = "Last edited: ${SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date())}",
+                    fontName = currentFontName // ** SAVE THE FONT **
+                )
+                database.bookDao().updateBook(updatedBook)
+                currentBook = updatedBook
+            }
+        }
+    }
+
+    private fun loadBook() {
+        lifecycleScope.launch {
+            currentBook = database.bookDao().getBook(bookId)
+            currentBook?.let { book ->
+                try {
+                    val htmlHandler = SimpleHtmlHandler(this@EditorActivity)
+
+                    // Use formatted content if available, otherwise use story content
+                    val contentToLoad = if (book.contentFormat == ContentFormat.HTML && !book.formattedContent.isNullOrEmpty()) {
+                        // If the content doesn't have HTML wrapper, add it for parsing
+                        val content = book.formattedContent
+                        if (!content.startsWith("<html>") && !content.startsWith("<!DOCTYPE")) {
+                            "<html><body>$content</body></html>"
+                        } else {
+                            content
+                        }
+                    } else {
+                        // Convert plain text to HTML
+                        "<html><body><p>${book.storyContent.replace("\n", "</p><p>")}</p></body></html>"
+                    }
+
+                    val spannable = htmlHandler.htmlToSpannable(contentToLoad)
+                    val fontToSelect = fontList.find { it.resourceEntryName == book.fontName }
+                        ?: fontList[0] // Fallback to default
+
+                    // update dropdown UI
+                    val spinnerPosition = fontList.indexOf(fontToSelect)
+                    if (spinnerPosition >= 0) {
+                        binding.actionFontSelection.setSelection(spinnerPosition)
+                    }
+
+                    // apply to view
+                    binding.typewriter.setGlobalFont(fontToSelect)
+
+                    supportActionBar?.title = book.title
+                } catch (e: Exception) {
+                    // Fallback to simple HTML parsing
+                    try {
+                        val spannable = Html.fromHtml(
+                            book.storyContent,
+                            Html.FROM_HTML_MODE_COMPACT
+                        )
+                        binding.typewriter.setContent(spannable)
+                    } catch (e2: Exception) {
+                        // Last resort: plain text
+                        binding.typewriter.setContent(book.storyContent)
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_editor, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+
+            android.R.id.home -> {
+                saveBook()
+                finish()
+                true
+            }
+
+            R.id.action_save -> {
+                saveBook()
+                Toast.makeText(this, "Document Saved", Toast.LENGTH_SHORT).show()
+                true
+            }
+
+            R.id.action_statistics -> {
+                // Get the word and page counts
+                val wordCount = getWordCount()
+                val pageCount = getPageCount()
+
+                // Build the message string
+                val message = "Word Count: $wordCount\nPage Count: $pageCount"
+
+                // Create and show the AlertDialog
+                AlertDialog.Builder(this)
+                    .setTitle("Statistics:")
+                    .setMessage(message)
+                    .setPositiveButton("OK") { dialog, _ ->
+                        dialog.dismiss()
+                    }
+                    .show()
+
+                true
+            }
+
+            R.id.action_find_replace -> {
+                // ** MODIFICATION START **
+                showFindReplaceDialog()
+                // ** MODIFICATION END **
+                true
+            }
+
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    // ** NEW METHOD START **
+    private fun showFindReplaceDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_find_replace, null)
+        val findEditText = dialogView.findViewById<EditText>(R.id.et_find)
+        val replaceEditText = dialogView.findViewById<EditText>(R.id.et_replace)
+        val mainEditText = binding.typewriter.editText
+
+        // Reset search index when the dialog is opened
+        lastFoundIndex = 0
+        mainEditText.clearFocus()
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Find & Replace")
+            .setView(dialogView)
+            .setPositiveButton("Find") { _, _ -> /* Overridden below */ }
+            .setNeutralButton("Replace") { _, _ -> /* Overridden below */ }
+            .setNegativeButton("Replace All") { _, _ ->
+                val findText = findEditText.text.toString()
+                val replaceText = replaceEditText.text.toString()
+
+                if (findText.isNotEmpty()) {
+                    val originalContent = mainEditText.text.toString()
+                    val newContent = originalContent.replace(findText, replaceText, ignoreCase = true)
+                    mainEditText.setText(newContent)
+                    Toast.makeText(this, "All occurrences replaced.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .create()
+
+        dialog.show()
+
+        // We override some button listeners to prevent the dialog from closing on click.
+        val findButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+        val replaceButton = dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+
+        findButton.setOnClickListener {
+            val findText = findEditText.text.toString()
+            val content = mainEditText.text.toString()
+
+            if (findText.isEmpty()) return@setOnClickListener
+
+            // If we've searched to the end, wrap around
+            if (lastFoundIndex >= content.length) {
+                lastFoundIndex = 0
+                Toast.makeText(this, "Searching from top...", Toast.LENGTH_SHORT).show()
+            }
+
+            val startIndex = content.indexOf(findText, startIndex = lastFoundIndex, ignoreCase = true)
+
+            if (startIndex != -1) {
+                mainEditText.requestFocus()
+                mainEditText.setSelection(startIndex, startIndex + findText.length)
+                lastFoundIndex = startIndex + 1 // Prepare for next search
+            } else {
+                Toast.makeText(this, "Text not found.", Toast.LENGTH_SHORT).show()
+                lastFoundIndex = 0 // Reset for next time
+            }
+        }
+
+        replaceButton.setOnClickListener {
+            val findText = findEditText.text.toString()
+            val replaceText = replaceEditText.text.toString()
+
+            if (findText.isEmpty()) return@setOnClickListener
+
+            if (mainEditText.hasSelection()) {
+                val selectionStart = mainEditText.selectionStart
+                val selectionEnd = mainEditText.selectionEnd
+                val selectedText = mainEditText.text.subSequence(selectionStart, selectionEnd).toString()
+
+                // Check if the current selection matches the text to find
+                if (selectedText.equals(findText, ignoreCase = true)) {
+                    mainEditText.text.replace(selectionStart, selectionEnd, replaceText)
+                    // Automatically find the next occurrence
+                    lastFoundIndex = selectionStart + replaceText.length
+                    findButton.performClick()
+                } else {
+                    // Selection doesn't match, just find the next occurrence
+                    findButton.performClick()
+                }
+            } else {
+                // Nothing is selected, just find the first occurrence
+                findButton.performClick()
+            }
+        }
+    }
+    // ** NEW METHOD END **
+
+    override fun onPause() {
+        super.onPause()
+        saveBook()
+    }
+
+    fun getWordCount(): Int {
+        val text = binding.typewriter.editText.text.toString()
+        if (text.isBlank()) return 0
+        return text.trim().split("\\s+".toRegex()).size
+    }
+
+    fun getPageCount(): Int {
+        val layout = binding.typewriter.editText.layout ?: return 1
+        val textHeightInPixels = layout.height
+        val ydpi = resources.displayMetrics.ydpi
+        if (ydpi <= 0) return 1
+        // Assuming a standard page height of ~7 inches for calculation
+        val heightInInches = textHeightInPixels / ydpi
+        val pageCount = floor(heightInInches / 7.0).toInt() + 1
+        return pageCount.coerceAtLeast(1) // Ensure at least 1 page
+    }
+
+    companion object {
+        private const val REQUEST_CODE_PICK_IMAGE = 1001
+    }
+}
+
+// Data class for heading styles
+data class HeadingStyle(
+    val name: String,
+    val sizeFactor: Float
+)
+
+MainActivity.kt:
+// MainActivity.kt
+package com.gnimble.typewriter
+
+import android.content.Intent
+import android.os.Bundle
+import android.view.View
+import android.provider.Settings
+import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.gnimble.typewriter.adapter.BookAdapter
+import com.gnimble.typewriter.data.Book
+import com.gnimble.typewriter.databinding.ActivityMainBinding
+import com.gnimble.typewriter.viewmodel.MainViewModel
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
+
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityMainBinding
+    private val viewModel: MainViewModel by viewModels()
+    private lateinit var bookAdapter: BookAdapter
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        binding.bottomAppBar.setOnMenuItemClickListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.action_upload -> {
+                    // Handle upload action
+                    val intent = Intent(this, UploadActivity::class.java)
+                    startActivity(intent)
+                    true
+                }
+                R.id.action_settings -> {
+                    // Handle settings action
+                    val intent = Intent(Settings.ACTION_SETTINGS)
+                    startActivity(intent)
+                    true
+                }
+                else -> false
+            }
+        }
+
+        setupRecyclerView()
+        observeBooks()
+        setupFab()
+    }
+
+    private fun setupRecyclerView() {
+        bookAdapter = BookAdapter(
+            onBookClick = { book ->
+                openBook(book)
+            },
+            onRenameBook = { book, newTitle ->
+                renameBook(book, newTitle)
+            },
+            onDeleteBook = { book ->
+                deleteBook(book)
+            }
+        )
+
+        binding.booksRecyclerView.apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = bookAdapter
+        }
+    }
+
+    private fun observeBooks() {
+        viewModel.allBooks.observe(this) { books ->
+            bookAdapter.submitList(books)
+
+            // Show/hide empty view
+            if (books.isEmpty()) {
+                binding.emptyView.visibility = View.VISIBLE
+                binding.booksRecyclerView.visibility = View.GONE
+            } else {
+                binding.emptyView.visibility = View.GONE
+                binding.booksRecyclerView.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private fun setupFab() {
+        binding.fabAddBook.setOnClickListener {
+            showNewBookDialog()
+        }
+    }
+
+    private fun showNewBookDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_new_book, null)
+        val titleInput = dialogView.findViewById<TextInputEditText>(R.id.title_input)
+        val titleLayout = dialogView.findViewById<TextInputLayout>(R.id.title_layout)
+
+        AlertDialog.Builder(this)
+            .setTitle("Create New Story")
+            .setView(dialogView)
+            .setPositiveButton("Create") { dialog, _ ->
+                val title = titleInput.text?.toString()?.trim()
+                if (!title.isNullOrEmpty()) {
+                    createNewBook(title)
+                    dialog.dismiss()
+                }
+            }
+            .setNegativeButton("Cancel") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .create()
+            .apply {
+                show()
+
+                // Validate input on the fly
+                getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+
+                titleInput.addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                    override fun afterTextChanged(s: android.text.Editable?) {
+                        val text = s?.toString()?.trim()
+                        val isValid = !text.isNullOrEmpty()
+                        getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = isValid
+                        titleLayout.error = if (isValid) null else "Title is required"
+                    }
+                })
+            }
+    }
+
+    private fun createNewBook(title: String) {
+        val newBook = Book(
+            title = title,
+            subtitle = "",
+            storyContent = ""
+        )
+
+        viewModel.insert(newBook) { bookId ->
+            // Open the newly created book
+            runOnUiThread {
+                val intent = Intent(this, EditorActivity::class.java).apply {
+                    putExtra("book_id", bookId)
+                    putExtra("book_title", title)
+                }
+                startActivity(intent)
+            }
+        }
+    }
+
+    private fun openBook(book: Book) {
+        val intent = Intent(this, EditorActivity::class.java).apply {
+            putExtra("book_id", book.id)
+            putExtra("book_title", book.title)
+        }
+        startActivity(intent)
+    }
+
+    private fun renameBook(book: Book, newTitle: String) {
+        // Create a copy of the book with the new title
+        val updatedBook = book.copy(title = newTitle)
+
+        // Update the book in the database
+        viewModel.update(updatedBook)
+    }
+
+    private fun deleteBook(book: Book) {
+        // Delete the book from the database
+        viewModel.delete(book)
+    }
+}
+
+ShareActivity.kt:
+// ShareActivity.kt - Enhanced with font support
+package com.gnimble.typewriter
+
+import android.graphics.Bitmap
+import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.gnimble.typewriter.data.ContentFormat
+import com.gnimble.typewriter.databinding.ActivityShareBinding
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.WriterException
+import com.google.zxing.qrcode.QRCodeWriter
+import com.journeyapps.barcodescanner.BarcodeEncoder
+import fi.iki.elonen.NanoHTTPD
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.net.NetworkInterface
+import java.util.*
+
+class ShareActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityShareBinding
+    private var webServer: BookWebServer? = null
+    private val PORT = 8888
+
+    // Font mapping between local resources and Google Fonts
+    companion object {
+        // Map of resource field names to Google Fonts URLs and family names
+        // Update these mappings based on your actual fonts in /res/font/
+        private val FONT_MAPPINGS = mapOf(
+            "cardo" to FontMapping("Cardo", "https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&display=swap"),
+            "crimson_text" to FontMapping("Crimson Text", "https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&display=swap", "700"),
+            "eb_garamond" to FontMapping("EB Garamond", "https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&display=swap", "400", "italic"),
+            "young_serif" to FontMapping("Young Serif", "https://fonts.googleapis.com/css2?family=Young+Serif&display=swap"),
+        )
+
+        data class FontMapping(
+            val familyName: String,
+            val googleFontUrl: String,
+            val weight: String = "400",
+            val style: String = "normal"
+        )
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        binding = ActivityShareBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        // Get book data from intent - including formatted content
+        val bookTitle = intent.getStringExtra("book_title") ?: "Unknown Title"
+        val bookSubtitle = intent.getStringExtra("book_subtitle") ?: ""
+        val bookContent = intent.getStringExtra("book_content") ?: ""
+        val formattedContent = intent.getStringExtra("book_formatted_content")
+        val contentFormat = intent.getStringExtra("book_content_format")?.let {
+            ContentFormat.valueOf(it)
+        } ?: ContentFormat.PLAIN_TEXT
+        val bookFontName = intent.getStringExtra("book_font_name") ?: "default"
+
+        startWebServer(bookTitle, bookSubtitle, bookContent, formattedContent, contentFormat, bookFontName)
+
+        binding.stopServerButton.setOnClickListener {
+            stopWebServer()
+            finish()
+        }
+    }
+
+    private fun startWebServer(
+        title: String,
+        subtitle: String,
+        content: String,
+        formattedContent: String?,
+        contentFormat: ContentFormat,
+        fontName: String
+    ) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val ipAddress = getLocalIpAddress()
+                val serverUrl = "http://$ipAddress:$PORT"
+
+                // Create and start the server with formatted content
+                webServer = BookWebServer(PORT, title, subtitle, content, formattedContent, contentFormat, fontName)
+                webServer?.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+
+                withContext(Dispatchers.Main) {
+                    binding.serverUrlText.text = serverUrl
+                    binding.instructionsText.text = "Share is active! Others can connect to your book by:\n" +
+                            "1. Scanning the QR code below, or\n" +
+                            "2. Entering this URL in their browser: $serverUrl\n\n" +
+                            "Make sure devices are on the same Wi-Fi network."
+
+                    // Generate QR code
+                    generateQRCode(serverUrl)
+
+                    Toast.makeText(this@ShareActivity, "Server started on $serverUrl", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Log.e("ShareActivity", "Error starting server", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@ShareActivity, "Failed to start server: ${e.message}", Toast.LENGTH_LONG).show()
+                    finish()
+                }
+            }
+        }
+    }
+
+    private inner class BookWebServer(
+        port: Int,
+        private val title: String,
+        private val subtitle: String,
+        private val content: String,
+        private val formattedContent: String?,
+        private val contentFormat: ContentFormat,
+        private val fontName: String
+    ) : NanoHTTPD(port) {
+
+        override fun serve(session: IHTTPSession): Response {
+            // Serve the main HTML content
+            return newFixedLengthResponse(Response.Status.OK, "text/html", generateHtmlContent())
+        }
+
+        private fun generateHtmlContent(): String {
+            // 1. Determine Font URL and CSS Family
+            var googleFontUrl = ""
+            var cssFontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif"
+            var cssFontWeight = "normal"
+            var cssFontStyle = "normal"
+
+            // Lookup font in mappings
+            if (fontName != "default" && FONT_MAPPINGS.containsKey(fontName)) {
+                val mapping = FONT_MAPPINGS[fontName]!!
+                googleFontUrl = """<link href="${mapping.googleFontUrl}" rel="stylesheet">"""
+                cssFontFamily = "'${mapping.familyName}', serif"
+                if (mapping.weight != "400") cssFontWeight = mapping.weight
+                if (mapping.style != "normal") cssFontStyle = mapping.style
+            }
+
+            // 2. Simplify body processing (we don't need convertFontReferences anymore)
+            val bodyContent = when (contentFormat) {
+                ContentFormat.HTML -> processFormattedHtml(formattedContent ?: content)
+                else -> convertPlainTextToHtml(content)
+            }
+
+            return """
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>$title</title>
+                $googleFontUrl
+                <style>
+                    body {
+                        font-family: $cssFontFamily;
+                        font-weight: $cssFontWeight;
+                        font-style: $cssFontStyle;
+                        line-height: 1.6;
+                        color: #333;
+                        max-width: 800px;
+                        margin: 0 auto;
+                        padding: 20px;
+                        background-color: #f5f5f5;
+                    }
+                    .container {
+                        background-color: white;
+                        padding: 30px;
+                        border-radius: 10px;
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    }
+                    h1 {
+                        color: #2c3e50;
+                        margin-bottom: 10px;
+                    }
+                    h2 {
+                        color: #7f8c8d;
+                        font-weight: normal;
+                        margin-top: 0;
+                        margin-bottom: 30px;
+                    }
+                    .content {
+                        text-align: justify;
+                        margin-top: 30px;
+                    }
+                    .content p {
+                        margin-bottom: 1.5em;
+                    }
+                    .content p.indented-paragraph {
+                        text-indent: 2em;
+                    }
+                    /* Text formatting styles */
+                    .content b, .content strong {
+                        font-weight: bold;
+                    }
+                    .content i, .content em {
+                        font-style: italic;
+                    }
+                    .content .large-text, .content span[style*="font-size: 2"], .content span[style*="font-size: 1.7"], .content span[style*="font-size: 1.5"] {
+                        font-size: 1.5em;
+                    }
+                    .content .small-text, .content span[style*="font-size: 0."] {
+                        font-size: 0.85em;
+                    }
+                    /* Alignment styles */
+                    .content .align-center, .content p.align-center {
+                        text-align: center !important;
+                        text-indent: 0 !important;
+                    }
+                    .content .align-right, .content p.align-right {
+                        text-align: right !important;
+                        text-indent: 0 !important;
+                    }
+                    .content .align-justify, .content p.align-justify {
+                        text-align: justify !important;
+                        text-indent: 0 !important;
+                    }
+                    .metadata {
+                        background-color: #ecf0f1;
+                        padding: 15px;
+                        border-radius: 5px;
+                        margin-bottom: 20px;
+                        font-size: 0.9em;
+                    }
+                    .footer {
+                        margin-top: 40px;
+                        padding-top: 20px;
+                        border-top: 1px solid #e0e0e0;
+                        text-align: center;
+                        color: #7f8c8d;
+                        font-size: 0.9em;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>${escapeHtml(title)}</h1>
+                    ${if (subtitle.isNotEmpty()) "<h2>${escapeHtml(subtitle)}</h2>" else ""}
+                    
+                    <div class="content">
+                        $bodyContent
+                    </div>
+                    
+                    <div class="footer">
+                        <p>Shared with 💙 from Gnimble Typewriter</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """.trimIndent()
+        }
+
+        private fun extractUsedFonts(html: String): Set<String> {
+            val usedFonts = mutableSetOf<String>()
+
+            Log.d("BookWebServer", "Extracting fonts from HTML: ${html.take(200)}...")
+
+            // Extract font resource IDs from the HTML
+            val fontPattern = Regex("""data-font-resource-id="(\d+)"""")
+            fontPattern.findAll(html).forEach { match ->
+                val resourceId = match.groupValues[1].toIntOrNull()
+                Log.d("BookWebServer", "Found font resource ID: $resourceId")
+                if (resourceId != null) {
+                    // Find the corresponding font name from resource ID
+                    val fontFieldName = getFontFieldNameFromResourceId(resourceId)
+                    Log.d("BookWebServer", "Font field name for ID $resourceId: $fontFieldName")
+                    if (fontFieldName != null) {
+                        usedFonts.add(fontFieldName)
+                    }
+                }
+            }
+
+            // Also extract font names directly if present
+            val fontNamePattern = Regex("""data-font-name="([^"]+)"""")
+            fontNamePattern.findAll(html).forEach { match ->
+                val fontName = match.groupValues[1]
+                Log.d("BookWebServer", "Found font name: $fontName")
+                // Convert display name back to field name
+                val fieldName = fontName.lowercase().replace(" ", "_")
+                if (FONT_MAPPINGS.containsKey(fieldName)) {
+                    usedFonts.add(fieldName)
+                }
+            }
+
+            Log.d("BookWebServer", "Total fonts found: ${usedFonts.size} - $usedFonts")
+
+            return usedFonts
+        }
+
+        private fun getFontFieldNameFromResourceId(resourceId: Int): String? {
+            // Use reflection to find the field name from resource ID
+            try {
+                val fontFields = R.font::class.java.fields
+                for (field in fontFields) {
+                    if (field.getInt(null) == resourceId) {
+                        return field.name
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("BookWebServer", "Error finding font field name", e)
+            }
+            return null
+        }
+
+        private fun generateFontLinks(usedFonts: Set<String>): String {
+            val uniqueUrls = mutableSetOf<String>()
+
+            for (fontField in usedFonts) {
+                FONT_MAPPINGS[fontField]?.let { mapping ->
+                    uniqueUrls.add(mapping.googleFontUrl)
+                }
+            }
+
+            return uniqueUrls.joinToString("\n") { url ->
+                """<link href="$url" rel="stylesheet">"""
+            }
+        }
+
+        private fun generateFontStyles(usedFonts: Set<String>): String {
+            val styles = mutableListOf<String>()
+
+            Log.d("BookWebServer", "Generating font styles for: $usedFonts")
+
+            // Always include a default font style
+            styles.add("""
+                .content span {
+                    /* Default span style to ensure inheritance works */
+                }
+            """.trimIndent())
+
+            for (fontField in usedFonts) {
+                FONT_MAPPINGS[fontField]?.let { mapping ->
+                    val className = ".font-${fontField.replace("_", "-")}"
+                    val fontWeight = if (mapping.weight != "400") "font-weight: ${mapping.weight} !important;" else ""
+                    val fontStyle = if (mapping.style != "normal") "font-style: ${mapping.style} !important;" else ""
+
+                    styles.add("""
+                        .content $className {
+                            font-family: '${mapping.familyName}', serif !important;
+                            $fontWeight
+                            $fontStyle
+                        }
+                    """.trimIndent())
+
+                    Log.d("BookWebServer", "Generated style for $className with family '${mapping.familyName}'")
+                }
+            }
+
+            // Also add styles for font names (for backward compatibility)
+            for (fontField in usedFonts) {
+                FONT_MAPPINGS[fontField]?.let { mapping ->
+                    val displayName = fontField.replace("_", " ").split(" ")
+                        .joinToString(" ") { it.replaceFirstChar { c -> c.titlecase() } }
+                    val className = ".font-${displayName.replace(" ", "-")}"
+
+                    styles.add("""
+                        .content $className {
+                            font-family: '${mapping.familyName}', serif !important;
+                        }
+                    """.trimIndent())
+                }
+            }
+
+            val finalStyles = styles.joinToString("\n")
+            Log.d("BookWebServer", "Generated CSS:\n$finalStyles")
+
+            return finalStyles
+        }
+
+        private fun convertPlainTextToHtml(text: String): String {
+            return text
+                .split("\n\n")
+                .filter { it.isNotBlank() }
+                .joinToString("") { "<p>${escapeHtml(it.trim())}</p>" }
+        }
+
+        private fun processFormattedHtml(html: String): String {
+            // First, extract just the body content if it's wrapped in html/body tags
+            var processed = html
+
+            // Extract content between <body> tags if present
+            val bodyPattern = Regex("""<body[^>]*>(.*?)</body>""", RegexOption.DOT_MATCHES_ALL)
+            val bodyMatch = bodyPattern.find(processed)
+            if (bodyMatch != null) {
+                processed = bodyMatch.groupValues[1]
+            }
+
+            // Remove any remaining html, head, or body tags
+            processed = processed
+                .replace(Regex("""</?html[^>]*>"""), "")
+                .replace(Regex("""</?head[^>]*>"""), "")
+                .replace(Regex("""</?body[^>]*>"""), "")
+                .replace(Regex("""<meta[^>]*>"""), "")
+                .replace(Regex("""<title[^>]*>.*?</title>"""), "")
+                // Remove any script tags for security
+                .replace(Regex("""<script[^>]*>.*?</script>""", RegexOption.DOT_MATCHES_ALL), "")
+                // Remove all image tags
+                .replace(Regex("""<img[^>]*>"""), "")
+
+            // Convert font references BEFORE other processing
+            processed = convertFontReferences(processed)
+
+            // Handle alignment - make sure to catch all variations
+            processed = processed
+                .replace(Regex("""<span\s+data-alignment="center"[^>]*>"""), """<span class="align-center">""")
+                .replace(Regex("""<span\s+data-alignment="right"[^>]*>"""), """<span class="align-right">""")
+                .replace(Regex("""<span\s+data-alignment="left"[^>]*>"""), """<span>""")
+
+            // Handle size spans - both data attributes and inline styles
+            processed = processed
+                .replace(Regex("""<span\s+style="font-size:\s*([\d.]+)em;"[^>]*>""")) { match ->
+                    val size = match.groupValues[1].toFloatOrNull() ?: 1.0f
+                    when {
+                        size >= 1.5f -> """<span class="large-text">"""
+                        size <= 0.8f -> """<span class="small-text">"""
+                        else -> "<span>"
+                    }
+                }
+
+            // Handle paragraph classes
+            processed = processed
+                .replace(Regex("""<p\s+class="indented-paragraph">"""), """<p class="indented-paragraph">""")
+                .trim()
+
+            // Debug log to see what we're actually serving
+            Log.d("BookWebServer", "Processed HTML: $processed")
+
+            return processed
+        }
+
+        private fun convertFontReferences(html: String): String {
+            var processed = html
+
+            // Convert data-font-resource-id spans - handle multiple attributes
+            processed = processed.replace(Regex("""<span([^>]*?)data-font-resource-id="(\d+)"([^>]*?)>""")) { match ->
+                val beforeAttr = match.groupValues[1]
+                val resourceId = match.groupValues[2].toIntOrNull()
+                val afterAttr = match.groupValues[3]
+
+                if (resourceId != null) {
+                    val fontFieldName = getFontFieldNameFromResourceId(resourceId)
+                    if (fontFieldName != null) {
+                        // Check if there are other attributes to preserve
+                        val otherAttrs = (beforeAttr + afterAttr).trim()
+                        if (otherAttrs.isNotEmpty()) {
+                            """<span class="font-${fontFieldName.replace("_", "-")}" $otherAttrs>"""
+                        } else {
+                            """<span class="font-${fontFieldName.replace("_", "-")}">"""
+                        }
+                    } else {
+                        "<span${beforeAttr}${afterAttr}>"
+                    }
+                } else {
+                    "<span${beforeAttr}${afterAttr}>"
+                }
+            }
+
+            // Convert data-font-name spans
+            processed = processed.replace(Regex("""<span([^>]*?)data-font-name="([^"]+)"([^>]*?)>""")) { match ->
+                val beforeAttr = match.groupValues[1]
+                val fontName = match.groupValues[2]
+                val afterAttr = match.groupValues[3]
+
+                // Clean up the other attributes - remove the data-font-resource-id if present
+                var cleanedAttrs = (beforeAttr + afterAttr)
+                    .replace(Regex("""data-font-resource-id="\d+""""), "")
+                    .trim()
+
+                val className = "font-${fontName.replace(" ", "-")}"
+                if (cleanedAttrs.isNotEmpty()) {
+                    """<span class="$className" $cleanedAttrs>"""
+                } else {
+                    """<span class="$className">"""
+                }
+            }
+
+            return processed
+        }
+
+        private fun escapeHtml(text: String): String {
+            return text
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;")
+        }
+    }
+
+    private fun generateQRCode(url: String) {
+        try {
+            val writer = QRCodeWriter()
+            val bitMatrix = writer.encode(url, BarcodeFormat.QR_CODE, 512, 512)
+            val barcodeEncoder = BarcodeEncoder()
+            val bitmap: Bitmap = barcodeEncoder.createBitmap(bitMatrix)
+            binding.qrCodeImage.setImageBitmap(bitmap)
+        } catch (e: WriterException) {
+            Log.e("ShareActivity", "Error generating QR code", e)
+            Toast.makeText(this, "Failed to generate QR code", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun getLocalIpAddress(): String {
+        try {
+            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            for (intf in interfaces) {
+                // Skip loopback and non-active interfaces
+                if (intf.isLoopback || !intf.isUp) continue
+
+                val addrs = Collections.list(intf.inetAddresses)
+                for (addr in addrs) {
+                    if (!addr.isLoopbackAddress) {
+                        val sAddr = addr.hostAddress
+                        // Check if it's IPv4
+                        val isIPv4 = (sAddr?.indexOf(':') ?: -1) < 0
+                        if (isIPv4 && sAddr != null) {
+                            // Accept common private IP ranges
+                            if (sAddr.startsWith("192.168.") ||
+                                sAddr.startsWith("10.") ||
+                                sAddr.startsWith("172.")) {
+                                Log.d("ShareActivity", "Found IP: $sAddr on interface: ${intf.displayName}")
+                                return sAddr
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fallback: try to get WiFi IP specifically
+            val wifiIp = getWifiIpAddress()
+            if (wifiIp != null) {
+                return wifiIp
+            }
+        } catch (e: Exception) {
+            Log.e("ShareActivity", "Error getting IP address", e)
+        }
+
+        // Last resort - return first non-loopback IPv4 address
+        try {
+            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            for (intf in interfaces) {
+                val addrs = Collections.list(intf.inetAddresses)
+                for (addr in addrs) {
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        return addr.hostAddress ?: "localhost"
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ShareActivity", "Error in fallback IP detection", e)
+        }
+
+        return "localhost"
+    }
+
+    private fun getWifiIpAddress(): String? {
+        try {
+            // Try to specifically get the wlan0 interface (common WiFi interface name)
+            val wifiInterface = NetworkInterface.getByName("wlan0")
+            if (wifiInterface != null && wifiInterface.isUp) {
+                val addresses = Collections.list(wifiInterface.inetAddresses)
+                for (addr in addresses) {
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        return addr.hostAddress
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ShareActivity", "Error getting WiFi IP", e)
+        }
+        return null
+    }
+
+    private fun stopWebServer() {
+        webServer?.stop()
+        webServer = null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        stopWebServer()
+    }
+}
+
+// Extension function to safely read bytes from InputStream
+fun java.io.InputStream.readBytes(): ByteArray {
+    val buffer = ByteArrayOutputStream()
+    val data = ByteArray(16384)
+    var nRead: Int
+    while (this.read(data, 0, data.size).also { nRead = it } != -1) {
+        buffer.write(data, 0, nRead)
+    }
+    buffer.flush()
+    return buffer.toByteArray()
+}
+
+TypewriterView.kt:
+// TypewriterView.kt
+package com.gnimble.typewriter
+
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.text.Layout
+import android.text.Spannable
+import android.text.style.AlignmentSpan
+import android.text.style.LeadingMarginSpan
+import android.text.style.StyleSpan
+import android.text.style.TypefaceSpan
+import android.util.AttributeSet
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.widget.EditText
+import android.widget.TextView
+import android.text.style.RelativeSizeSpan
+import androidx.constraintlayout.widget.ConstraintLayout
+import com.gnimble.typewriter.databinding.ViewTypewriterBinding
+import com.gnimble.typewriter.data.FontItem
+
+class TypewriterView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : ConstraintLayout(context, attrs, defStyleAttr) {
+
+    private val binding: ViewTypewriterBinding =
+        ViewTypewriterBinding.inflate(LayoutInflater.from(context), this)
+
+    private var currentFont: FontItem? = null
+
+    // Calculate 1/4 inch in pixels (1/4 inch = 0.25 * DPI)
+    private val tabIndentPixels = (0.25f * resources.displayMetrics.densityDpi).toInt()
+
+    val editText: EditText
+        get() = binding.editText
+
+    init {
+        // Ensure EditText uses SpannableStringBuilder
+        editText.setText("", TextView.BufferType.SPANNABLE)
+
+        // Configure EditText for proper word wrapping
+        editText.apply {
+            // Ensure no horizontal scrolling
+            isHorizontalScrollBarEnabled = false
+
+            // Set 1.5x line spacing for readability
+            setLineSpacing(0f, 1.5f)
+
+            // Add some padding to prevent text from touching edges
+            val horizontalPadding = (8 * resources.displayMetrics.density).toInt()
+            setPadding(horizontalPadding, paddingTop, horizontalPadding, paddingBottom)
+
+            // Set default gravity to TOP | START and never change it
+            gravity = Gravity.TOP or Gravity.START
+        }
+
+        // Add text change listener to handle paragraph indentation
+        editText.addTextChangedListener(ParagraphIndentWatcher())
+    }
+
+    // Custom span for first line indentation
+    class FirstLineIndentSpan(private val indent: Int) : LeadingMarginSpan {
+        override fun getLeadingMargin(first: Boolean): Int {
+            return if (first) indent else 0
+        }
+
+        override fun drawLeadingMargin(
+            canvas: Canvas, paint: Paint, x: Int, dir: Int,
+            top: Int, baseline: Int, bottom: Int,
+            text: CharSequence, start: Int, end: Int,
+            first: Boolean, layout: Layout
+        ) {
+            // No drawing needed, just spacing
+        }
+    }
+
+    // Custom span for justified text (workaround since there's no JustificationSpan)
+    // This uses a standard alignment span but we'll track it differently
+    class JustifySpan : AlignmentSpan {
+        override fun getAlignment(): Layout.Alignment {
+            // Return normal alignment, we'll handle justification differently
+            return Layout.Alignment.ALIGN_NORMAL
+        }
+    }
+
+    // Text watcher to handle paragraph indentation
+    private inner class ParagraphIndentWatcher : android.text.TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+
+        override fun afterTextChanged(s: android.text.Editable?) {
+            if (s == null) return
+
+            // Remove the watcher temporarily to avoid infinite loop
+            editText.removeTextChangedListener(this)
+
+            // Apply indentation to all paragraphs
+            applyParagraphIndents(s)
+
+            // Re-add the watcher
+            editText.addTextChangedListener(this)
+        }
+    }
+
+    private fun applyParagraphIndents(spannable: android.text.Editable) {
+        // Remove all existing FirstLineIndentSpan
+        val existingIndents = spannable.getSpans(0, spannable.length, FirstLineIndentSpan::class.java)
+        existingIndents.forEach { spannable.removeSpan(it) }
+
+        // Find all paragraph starts
+        var paragraphStart = 0
+        while (paragraphStart < spannable.length) {
+            // Find the end of the current paragraph
+            var paragraphEnd = spannable.indexOf('\n', paragraphStart)
+            if (paragraphEnd == -1) {
+                paragraphEnd = spannable.length
+            } else {
+                paragraphEnd++ // Include the newline character
+            }
+
+            // Apply indent only if the paragraph has content
+            if (paragraphEnd > paragraphStart &&
+                (paragraphEnd == paragraphStart + 1 || spannable[paragraphStart] != '\n')) {
+                spannable.setSpan(
+                    FirstLineIndentSpan(tabIndentPixels),
+                    paragraphStart,
+                    paragraphEnd,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                )
+            }
+
+            paragraphStart = paragraphEnd
+        }
+    }
+
+    enum class Alignment {
+        LEFT, CENTER, RIGHT, JUSTIFY
+    }
+
+    fun toggleBold() {
+        val spannable = editText.text as Spannable
+        val selectionStart = editText.selectionStart
+        val selectionEnd = editText.selectionEnd
+
+        if (selectionStart == selectionEnd) return
+
+        val styleSpans = spannable.getSpans(selectionStart, selectionEnd, StyleSpan::class.java)
+        val boldSpans = styleSpans.filter { it.style == android.graphics.Typeface.BOLD }
+
+        if (boldSpans.isNotEmpty()) {
+            boldSpans.forEach { spannable.removeSpan(it) }
+        } else {
+            spannable.setSpan(
+                StyleSpan(android.graphics.Typeface.BOLD),
+                selectionStart,
+                selectionEnd,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+    }
+
+    fun toggleItalic() {
+        val spannable = editText.text as Spannable
+        val selectionStart = editText.selectionStart
+        val selectionEnd = editText.selectionEnd
+
+        if (selectionStart == selectionEnd) return
+
+        val styleSpans = spannable.getSpans(selectionStart, selectionEnd, StyleSpan::class.java)
+        val italicSpans = styleSpans.filter { it.style == Typeface.ITALIC }
+
+        if (italicSpans.isNotEmpty()) {
+            italicSpans.forEach { spannable.removeSpan(it) }
+        } else {
+            spannable.setSpan(
+                StyleSpan(Typeface.ITALIC),
+                selectionStart,
+                selectionEnd,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+    }
+
+    fun setAlignment(alignment: Alignment) {
+        val spannable = editText.text as Spannable
+        val selectionStart = editText.selectionStart
+        val selectionEnd = editText.selectionEnd
+
+        // Find paragraph boundaries for the selection
+        val paragraphBounds = findParagraphBounds(spannable, selectionStart, selectionEnd)
+
+        for ((paraStart, paraEnd) in paragraphBounds) {
+            // Remove any existing alignment spans in this paragraph
+            val existingAlignmentSpans = spannable.getSpans(paraStart, paraEnd, AlignmentSpan::class.java)
+            existingAlignmentSpans.forEach { spannable.removeSpan(it) }
+
+            // Remove any JustifySpan markers
+            val existingJustifySpans = spannable.getSpans(paraStart, paraEnd, JustifySpan::class.java)
+            existingJustifySpans.forEach { spannable.removeSpan(it) }
+
+            // Apply new alignment span
+            when (alignment) {
+                Alignment.LEFT -> {
+                    // LEFT is default, so just removing existing spans is enough
+                }
+                Alignment.CENTER -> {
+                    spannable.setSpan(
+                        AlignmentSpan.Standard(Layout.Alignment.ALIGN_CENTER),
+                        paraStart,
+                        paraEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                    )
+                }
+                Alignment.RIGHT -> {
+                    spannable.setSpan(
+                        AlignmentSpan.Standard(Layout.Alignment.ALIGN_OPPOSITE),
+                        paraStart,
+                        paraEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                    )
+                }
+                Alignment.JUSTIFY -> {
+                    // Since Android doesn't have a JustificationSpan, we'll use a marker
+                    // and handle justification in a custom TextView if needed
+                    spannable.setSpan(
+                        JustifySpan(),
+                        paraStart,
+                        paraEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                    )
+                    // You could also apply both start alignment and a custom attribute
+                    spannable.setSpan(
+                        AlignmentSpan.Standard(Layout.Alignment.ALIGN_NORMAL),
+                        paraStart,
+                        paraEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                    )
+                }
+            }
+        }
+    }
+
+    // Helper function to find paragraph boundaries
+    private fun findParagraphBounds(text: CharSequence, selectionStart: Int, selectionEnd: Int): List<Pair<Int, Int>> {
+        val paragraphs = mutableListOf<Pair<Int, Int>>()
+
+        // Find the paragraph containing the selection start
+        var paraStart = selectionStart
+        while (paraStart > 0 && text[paraStart - 1] != '\n') {
+            paraStart--
+        }
+
+        // Find all paragraphs in the selection
+        var currentStart = paraStart
+        while (currentStart <= selectionEnd && currentStart < text.length) {
+            // Find the end of the current paragraph
+            var paraEnd = currentStart
+            while (paraEnd < text.length && text[paraEnd] != '\n') {
+                paraEnd++
+            }
+
+            // Include the newline character in the paragraph if it exists
+            if (paraEnd < text.length) {
+                paraEnd++
+            }
+
+            // Add this paragraph if it's within our selection
+            if (currentStart < selectionEnd || selectionStart == selectionEnd) {
+                paragraphs.add(Pair(currentStart, paraEnd))
+            }
+
+            // Move to the next paragraph
+            currentStart = paraEnd
+
+            // If we've passed the selection end, we're done
+            if (currentStart > selectionEnd && selectionStart != selectionEnd) {
+                break
+            }
+        }
+
+        return paragraphs
+    }
+
+    // Custom TypefaceSpan to support custom fonts
+    class CustomTypefaceSpan(
+        val customTypeface: Typeface,
+        val resourceId: Int  // Add this to store the font resource ID
+    ) : TypefaceSpan("") {
+
+        override fun updateDrawState(textPaint: android.text.TextPaint) {
+            applyCustomTypeface(textPaint)
+        }
+
+        override fun updateMeasureState(textPaint: android.text.TextPaint) {
+            applyCustomTypeface(textPaint)
+        }
+
+        private fun applyCustomTypeface(paint: android.text.TextPaint) {
+            val oldTypeface = paint.typeface
+            val oldStyle = oldTypeface?.style ?: 0
+
+            val fake = oldStyle and customTypeface.style.inv()
+            if (fake and Typeface.BOLD != 0) {
+                paint.isFakeBoldText = true
+            }
+
+            if (fake and Typeface.ITALIC != 0) {
+                paint.textSkewX = -0.25f
+            }
+
+            paint.typeface = customTypeface
+        }
+    }
+
+    fun setGlobalFont(fontItem: FontItem) {
+        currentFont = fontItem
+
+        // Apply to the entire EditText
+        if (fontItem.resourceId == 0) {
+            editText.typeface = Typeface.DEFAULT
+        } else {
+            editText.typeface = fontItem.typeface
+        }
+
+        // CLEANUP: Remove any legacy CustomTypefaceSpans if they exist
+        // (This cleans up old documents that might have had mixed fonts)
+        val spannable = editText.text as Spannable
+        val spans = spannable.getSpans(0, spannable.length, CustomTypefaceSpan::class.java)
+        spans.forEach { spannable.removeSpan(it) }
+    }
+
+    fun applyHeadingStyle(headingStyle: HeadingStyle) {
+        val spannable = editText.text as Spannable
+        val start = editText.selectionStart
+        val end = editText.selectionEnd
+
+        if (start != end) {
+            // Remove existing RelativeSizeSpan in selection
+            val existingSpans = spannable.getSpans(start, end, RelativeSizeSpan::class.java)
+            existingSpans.forEach { spannable.removeSpan(it) }
+
+            // Apply new size
+            if (headingStyle.sizeFactor != 1.0f) {
+                spannable.setSpan(
+                    RelativeSizeSpan(headingStyle.sizeFactor),
+                    start,
+                    end,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
+    }
+
+    fun insertImage(imageUri: android.net.Uri) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(imageUri)
+            val drawable = android.graphics.drawable.Drawable.createFromStream(inputStream, imageUri.toString())
+            inputStream?.close()
+
+            drawable?.let {
+                val intrinsicWidth = it.intrinsicWidth
+                val intrinsicHeight = it.intrinsicHeight
+                // Account for padding and indentation when calculating max width
+                val maxWidth = editText.width - editText.paddingLeft - editText.paddingRight - tabIndentPixels
+
+                // Scale image if needed
+                if (intrinsicWidth > maxWidth) {
+                    val scale = maxWidth.toFloat() / intrinsicWidth.toFloat()
+                    val scaledHeight = (intrinsicHeight * scale).toInt()
+                    it.setBounds(0, 0, maxWidth, scaledHeight)
+                } else {
+                    it.setBounds(0, 0, intrinsicWidth, intrinsicHeight)
+                }
+
+                val cursorPosition = editText.selectionStart
+                val editable = editText.text
+
+                // Insert newline, image placeholder, and another newline
+                editable.insert(cursorPosition, "\n \n")
+
+                // Apply image span to the space character
+                editable.setSpan(
+                    android.text.style.ImageSpan(it, android.text.style.ImageSpan.ALIGN_BASELINE),
+                    cursorPosition + 1,
+                    cursorPosition + 2,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+
+                // Move cursor after the image
+                editText.setSelection(cursorPosition + 3)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // Call this when loading content to ensure indents are applied
+    fun setContent(content: CharSequence) {
+        editText.setText(content, TextView.BufferType.SPANNABLE)
+        // Force apply indents after setting content
+        applyParagraphIndents(editText.text)
+    }
+
+    // Optional: Get the current alignment of the paragraph at cursor position
+    fun getCurrentAlignment(): Alignment {
+        val spannable = editText.text as Spannable
+        val cursorPos = editText.selectionStart
+
+        // Find paragraph bounds
+        var paraStart = cursorPos
+        while (paraStart > 0 && spannable[paraStart - 1] != '\n') {
+            paraStart--
+        }
+
+        // Check for alignment spans
+        val alignmentSpans = spannable.getSpans(paraStart, cursorPos, AlignmentSpan::class.java)
+        if (alignmentSpans.isNotEmpty()) {
+            val span = alignmentSpans[0]
+            return when {
+                span is JustifySpan -> Alignment.JUSTIFY
+                span is AlignmentSpan.Standard -> {
+                    when (span.alignment) {
+                        Layout.Alignment.ALIGN_CENTER -> Alignment.CENTER
+                        Layout.Alignment.ALIGN_OPPOSITE -> Alignment.RIGHT
+                        else -> Alignment.LEFT
+                    }
+                }
+                else -> Alignment.LEFT
+            }
+        }
+
+        return Alignment.LEFT
+    }
+}
+
+UploadActivity.kt:
+// UploadActivity.kt
+package com.gnimble.typewriter
+
+import android.Manifest
+import android.content.ContentValues
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
+import android.util.Log
+import android.webkit.MimeTypeMap
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import com.gnimble.typewriter.data.Book
+import com.gnimble.typewriter.data.ContentFormat
+import com.gnimble.typewriter.databinding.ActivityUploadBinding
+import com.gnimble.typewriter.viewmodel.MainViewModel
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.WriterException
+import com.google.zxing.qrcode.QRCodeWriter
+import com.journeyapps.barcodescanner.BarcodeEncoder
+import fi.iki.elonen.NanoHTTPD
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.net.NetworkInterface
+import java.text.SimpleDateFormat
+import java.util.*
+
+class UploadActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityUploadBinding
+    private lateinit var mainViewModel: MainViewModel
+    private var webServer: UploadWebServer? = null
+    private val PORT = 8889 // Different port from ShareActivity
+    private val PERMISSION_REQUEST_CODE = 1001
+
+    companion object {
+        private const val TAG = "UploadActivity"
+        private const val MAX_UPLOAD_SIZE = 50 * 1024 * 1024 // 50MB max file size
+
+        // Supported document extensions
+        private val DOCUMENT_EXTENSIONS = setOf("txt", "rtf", "html", "htm")
+        private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "bmp", "webp")
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        binding = ActivityUploadBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        // Initialize ViewModel
+        mainViewModel = ViewModelProvider(this)[MainViewModel::class.java]
+
+        startUploadServer()
+
+        binding.stopServerButton.setOnClickListener {
+            stopWebServer()
+            finish()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startUploadServer()
+            } else {
+                Toast.makeText(this, "Storage permission required for file uploads", Toast.LENGTH_LONG).show()
+                finish()
+            }
+        }
+    }
+
+    private fun startUploadServer() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val ipAddress = getLocalIpAddress()
+                val serverUrl = "http://$ipAddress:$PORT"
+
+                // Create uploads directory
+                val uploadsDir = getUploadsDirectory()
+                if (!uploadsDir.exists()) {
+                    uploadsDir.mkdirs()
+                }
+
+                // Create and start the server
+                webServer = UploadWebServer(PORT, uploadsDir, this@UploadActivity)
+                webServer?.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+
+                withContext(Dispatchers.Main) {
+                    binding.serverUrlText.text = serverUrl
+                    binding.instructionsText.text = "Upload server is active! Others can upload files by:\n" +
+                            "1. Scanning the QR code below, or\n" +
+                            "2. Entering this URL in their browser: $serverUrl\n\n" +
+                            "Supported files:\n" +
+                            "• Images: JPG, PNG, GIF, etc. (saved to Pictures)\n" +
+                            "• Documents: TXT, RTF, HTML (converted to books)"
+
+                    // Generate QR code
+                    generateQRCode(serverUrl)
+
+                    Toast.makeText(this@UploadActivity, "Upload server started on $serverUrl", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting server", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@UploadActivity, "Failed to start server: ${e.message}", Toast.LENGTH_LONG).show()
+                    finish()
+                }
+            }
+        }
+    }
+
+    private fun getUploadsDirectory(): File {
+        // Use app-specific external storage directory
+        val externalDir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+        return File(externalDir, "Uploads").apply {
+            if (!exists()) {
+                mkdirs()
+            }
+        }
+    }
+
+    private fun getFileExtension(fileName: String): String {
+        return fileName.substringAfterLast('.', "").lowercase()
+    }
+
+    private fun isDocumentFile(fileName: String): Boolean {
+        return DOCUMENT_EXTENSIONS.contains(getFileExtension(fileName))
+    }
+
+    private fun isImageFile(fileName: String): Boolean {
+        return IMAGE_EXTENSIONS.contains(getFileExtension(fileName))
+    }
+
+    // Convert RTF to plain text (basic implementation)
+    private fun convertRtfToPlainText(rtfContent: String): String {
+        // Basic RTF to plain text conversion
+        // This is a simplified version - for production, consider using a proper RTF parser
+        var text = rtfContent
+
+        // Remove RTF header and footer
+        val startIndex = text.indexOf("{\\rtf")
+        val endIndex = text.lastIndexOf("}")
+        if (startIndex >= 0 && endIndex > startIndex) {
+            text = text.substring(startIndex, endIndex + 1)
+        }
+
+        // Remove RTF control words and groups
+        text = text.replace(Regex("\\\\[a-z]+(-?\\d+)?[ ]?"), "")
+        text = text.replace(Regex("[{}]"), "")
+
+        // Convert special characters
+        text = text.replace("\\'92", "'")
+        text = text.replace("\\'93", """)
+        text = text.replace("\\'94", """)
+        text = text.replace("\\'96", "–")
+        text = text.replace("\\'97", "—")
+        text = text.replace("\\line", "\n")
+        text = text.replace("\\par", "\n\n")
+
+        // Clean up extra whitespace
+        text = text.replace(Regex("\\s+"), " ")
+        text = text.replace(Regex("\n{3,}"), "\n\n")
+
+        return text.trim()
+    }
+
+    // Extract title from HTML
+    private fun extractTitleFromHtml(htmlContent: String): String? {
+        val titleRegex = Regex("<title>(.*?)</title>", RegexOption.IGNORE_CASE)
+        val match = titleRegex.find(htmlContent)
+        return match?.groupValues?.get(1)?.trim()
+    }
+
+    // Create a book from document content
+    private suspend fun createBookFromDocument(
+        fileName: String,
+        content: String,
+        extension: String
+    ): Book {
+        var title = fileName.removeSuffix(".$extension")
+        var bookContent = content
+        var format = ContentFormat.PLAIN_TEXT
+        var formattedContent: String? = null
+
+        when (extension) {
+            "txt" -> {
+                // For TXT files, try to extract title from first line
+                val lines = content.lines()
+                if (lines.isNotEmpty() && lines[0].length < 100) {
+                    // Use first line as title if it's not too long
+                    title = lines[0].trim()
+                    bookContent = lines.drop(1).joinToString("\n").trim()
+                }
+            }
+            "rtf" -> {
+                // Convert RTF to plain text
+                bookContent = convertRtfToPlainText(content)
+
+                // Try to extract title from first line
+                val lines = bookContent.lines()
+                if (lines.isNotEmpty() && lines[0].length < 100) {
+                    title = lines[0].trim()
+                    bookContent = lines.drop(1).joinToString("\n").trim()
+                }
+            }
+            "html", "htm" -> {
+                // For HTML files, preserve the formatting
+                format = ContentFormat.HTML
+                formattedContent = content
+
+                // Extract plain text for storyContent (backward compatibility)
+                bookContent = content
+                    .replace(Regex("<[^>]+>"), "") // Remove HTML tags
+                    .replace(Regex("\\s+"), " ") // Normalize whitespace
+                    .trim()
+
+                // Try to extract title from HTML
+                extractTitleFromHtml(content)?.let {
+                    title = it
+                }
+            }
+        }
+
+        // Clean up the title
+        title = title.replace(Regex("[^a-zA-Z0-9\\s-]"), "").trim()
+        if (title.isEmpty()) {
+            title = "Untitled Book"
+        }
+
+        return Book(
+            title = title,
+            subtitle = "Imported from $fileName",
+            storyContent = bookContent,
+            formattedContent = formattedContent,
+            contentFormat = format,
+            createdDate = Date(),
+            lastEdited = Date()
+        )
+    }
+
+    private inner class UploadWebServer(
+        port: Int,
+        private val uploadsDir: File,
+        private val activity: UploadActivity
+    ) : NanoHTTPD(port) {
+
+        override fun serve(session: IHTTPSession): Response {
+            return when {
+                session.method == Method.POST && session.uri == "/upload" -> handleFileUpload(session)
+                session.method == Method.GET && session.uri == "/" -> serveUploadPage()
+                session.method == Method.GET && session.uri == "/status" -> serveStatus()
+                else -> newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
+            }
+        }
+
+        private fun saveImageToMediaStore(tempFile: File, fileName: String): String? {
+            val resolver = activity.contentResolver
+            val extension = getFileExtension(fileName)
+            val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "image/*"
+
+            val imageCollection = MediaStore.Images.Media.getContentUri(
+                MediaStore.VOLUME_EXTERNAL_PRIMARY
+            )
+
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val sanitizedFileName = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+            val uniqueFileName = "${timestamp}_$sanitizedFileName"
+
+            val newImageDetails = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, uniqueFileName)
+                put(MediaStore.Images.Media.MIME_TYPE, mimeType)
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Upload")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+
+            val imageUri = resolver.insert(imageCollection, newImageDetails)
+
+            imageUri?.let { uri ->
+                try {
+                    resolver.openOutputStream(uri)?.use { outputStream ->
+                        tempFile.inputStream().use { inputStream ->
+                            inputStream.copyTo(outputStream)
+                        }
+                    }
+                    newImageDetails.clear()
+                    newImageDetails.put(MediaStore.Images.Media.IS_PENDING, 0)
+                    resolver.update(uri, newImageDetails, null, null)
+                    return uniqueFileName
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to save image to MediaStore", e)
+                    resolver.delete(uri, null, null)
+                    return null
+                }
+            }
+            return null
+        }
+
+        private fun handleFileUpload(session: IHTTPSession): Response {
+            try {
+                val files = HashMap<String, String>()
+                session.parseBody(files)
+
+                val uploadedFileNames = mutableListOf<String>()
+                val createdBooks = mutableListOf<String>()
+
+                session.parameters["file"]?.forEachIndexed { index, fileName ->
+                    val tempFilePath = files["file"]
+                    if (tempFilePath != null) {
+                        val tempFile = File(tempFilePath)
+                        if (tempFile.exists()) {
+                            when {
+                                isImageFile(fileName) -> {
+                                    // Handle image files as before
+                                    val savedFileName = saveImageToMediaStore(tempFile, fileName)
+                                    if (savedFileName != null) {
+                                        uploadedFileNames.add(savedFileName)
+                                        activity.runOnUiThread {
+                                            Toast.makeText(activity, "Saved to Pictures: $savedFileName", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                                isDocumentFile(fileName) -> {
+                                    // Handle document files
+                                    try {
+                                        // Read the file content immediately before it gets deleted
+                                        val content = tempFile.readText()
+                                        val extension = getFileExtension(fileName)
+
+                                        // Now process in a coroutine
+                                        lifecycleScope.launch {
+                                            try {
+                                                val book = createBookFromDocument(fileName, content, extension)
+
+                                                // Insert book into database
+                                                mainViewModel.insert(book) { bookId ->
+                                                    createdBooks.add(book.title)
+                                                    activity.runOnUiThread {
+                                                        Toast.makeText(
+                                                            activity,
+                                                            "Created book: ${book.title}",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.e(TAG, "Error creating book from document", e)
+                                                activity.runOnUiThread {
+                                                    Toast.makeText(
+                                                        activity,
+                                                        "Failed to create book from $fileName",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Error reading document file", e)
+                                        activity.runOnUiThread {
+                                            Toast.makeText(
+                                                activity,
+                                                "Failed to read file: $fileName",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                }
+                                else -> {
+                                    Log.w(TAG, "Unsupported file type: $fileName")
+                                }
+                            }
+
+                            // Delete the temp file
+                            tempFile.delete()
+                        }
+                    }
+                }
+
+                // Wait a bit for books to be created (not ideal, but simple)
+                Thread.sleep(500)
+
+                val totalFiles = uploadedFileNames.size + createdBooks.size
+                if (totalFiles == 0) {
+                    throw Exception("No files were processed successfully.")
+                }
+
+                // Return JSON response
+                val jsonResponse = """
+                    {
+                        "success": true,
+                        "message": "Successfully processed $totalFiles file(s)",
+                        "images": [${uploadedFileNames.joinToString(",") { "\"$it\"" }}],
+                        "books": [${createdBooks.joinToString(",") { "\"$it\"" }}]
+                    }
+                """.trimIndent()
+
+                return newFixedLengthResponse(Response.Status.OK, "application/json", jsonResponse)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling upload", e)
+                val errorJson = """{"success": false, "message": "Upload failed: ${e.message}"}"""
+                return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json", errorJson)
+            }
+        }
+
+        private fun serveStatus(): Response {
+            val freeSpace = uploadsDir.freeSpace / (1024 * 1024) // MB
+            val fileCount = uploadsDir.listFiles()?.size ?: 0
+
+            val statusJson = """
+                {
+                    "active": true,
+                    "uploadDirectory": "${uploadsDir.name}",
+                    "fileCount": $fileCount,
+                    "freeSpaceMB": $freeSpace
+                }
+            """.trimIndent()
+
+            return newFixedLengthResponse(Response.Status.OK, "application/json", statusJson)
+        }
+
+        private fun serveUploadPage(): Response {
+            val html = """
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Upload Files to Gnimble Typewriter</title>
+                <style>
+                    * {
+                        box-sizing: border-box;
+                        margin: 0;
+                        padding: 0;
+                    }
+                    
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        min-height: 100vh;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        padding: 20px;
+                    }
+                    
+                    .container {
+                        background: white;
+                        border-radius: 20px;
+                        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+                        padding: 40px;
+                        max-width: 500px;
+                        width: 100%;
+                    }
+                    
+                    h1 {
+                        color: #333;
+                        margin-bottom: 10px;
+                        text-align: center;
+                        font-size: 28px;
+                    }
+                    
+                    .subtitle {
+                        color: #666;
+                        text-align: center;
+                        margin-bottom: 20px;
+                        font-size: 16px;
+                    }
+                    
+                    .file-types {
+                        background: #f5f7fa;
+                        border-radius: 10px;
+                        padding: 15px;
+                        margin-bottom: 25px;
+                        font-size: 14px;
+                        color: #555;
+                    }
+                    
+                    .file-types h3 {
+                        font-size: 14px;
+                        margin-bottom: 8px;
+                        color: #333;
+                    }
+                    
+                    .file-types-grid {
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 10px;
+                    }
+                    
+                    .file-type-group {
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    }
+                    
+                    .file-type-icon {
+                        font-size: 20px;
+                    }
+                    
+                    .upload-area {
+                        border: 3px dashed #ddd;
+                        border-radius: 15px;
+                        padding: 40px;
+                        text-align: center;
+                        transition: all 0.3s ease;
+                        cursor: pointer;
+                        background: #fafafa;
+                    }
+                    
+                    .upload-area:hover,
+                    .upload-area.drag-over {
+                        border-color: #667eea;
+                        background: #f0f0ff;
+                    }
+                    
+                    .upload-icon {
+                        font-size: 60px;
+                        color: #667eea;
+                        margin-bottom: 20px;
+                    }
+                    
+                    .upload-text {
+                        color: #666;
+                        margin-bottom: 20px;
+                        font-size: 18px;
+                    }
+                    
+                    .file-input {
+                        display: none;
+                    }
+                    
+                    .select-button {
+                        background: #667eea;
+                        color: white;
+                        padding: 12px 30px;
+                        border-radius: 8px;
+                        border: none;
+                        font-size: 16px;
+                        cursor: pointer;
+                        transition: background 0.3s ease;
+                        display: inline-block;
+                    }
+                    
+                    .select-button:hover {
+                        background: #5a67d8;
+                    }
+                    
+                    .file-list {
+                        margin-top: 30px;
+                    }
+                    
+                    .file-item {
+                        background: #f5f5f5;
+                        padding: 15px;
+                        border-radius: 8px;
+                        margin-bottom: 10px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                    }
+                    
+                    .file-info {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        flex: 1;
+                    }
+                    
+                    .file-type-badge {
+                        background: #667eea;
+                        color: white;
+                        padding: 2px 8px;
+                        border-radius: 4px;
+                        font-size: 11px;
+                        font-weight: bold;
+                        text-transform: uppercase;
+                    }
+                    
+                    .file-type-badge.image {
+                        background: #48bb78;
+                    }
+                    
+                    .file-type-badge.document {
+                        background: #4299e1;
+                    }
+                    
+                    .file-name {
+                        color: #333;
+                        font-size: 14px;
+                        word-break: break-all;
+                    }
+                    
+                    .file-size {
+                        color: #888;
+                        font-size: 12px;
+                        margin-left: 10px;
+                        white-space: nowrap;
+                    }
+                    
+                    .upload-button {
+                        background: #48bb78;
+                        color: white;
+                        padding: 15px 30px;
+                        border-radius: 8px;
+                        border: none;
+                        font-size: 18px;
+                        cursor: pointer;
+                        transition: background 0.3s ease;
+                        width: 100%;
+                        margin-top: 20px;
+                        display: none;
+                    }
+                    
+                    .upload-button:hover {
+                        background: #38a169;
+                    }
+                    
+                    .upload-button:disabled {
+                        background: #ccc;
+                        cursor: not-allowed;
+                    }
+                    
+                    .progress-bar {
+                        width: 100%;
+                        height: 6px;
+                        background: #e0e0e0;
+                        border-radius: 3px;
+                        overflow: hidden;
+                        margin-top: 20px;
+                        display: none;
+                    }
+                    
+                    .progress-fill {
+                        height: 100%;
+                        background: #667eea;
+                        width: 0%;
+                        transition: width 0.3s ease;
+                    }
+                    
+                    .status-message {
+                        text-align: center;
+                        margin-top: 20px;
+                        padding: 15px;
+                        border-radius: 8px;
+                        display: none;
+                    }
+                    
+                    .status-success {
+                        background: #d4edda;
+                        color: #155724;
+                        border: 1px solid #c3e6cb;
+                    }
+                    
+                    .status-error {
+                        background: #f8d7da;
+                        color: #721c24;
+                        border: 1px solid #f5c6cb;
+                    }
+                    
+                    .remove-file {
+                        color: #dc3545;
+                        cursor: pointer;
+                        font-size: 20px;
+                        padding: 0 5px;
+                    }
+                    
+                    .remove-file:hover {
+                        color: #c82333;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>📤 Upload Files</h1>
+                    <p class="subtitle">Send files to Gnimble Typewriter</p>
+                    
+                    <div class="file-types">
+                        <h3>Supported file types:</h3>
+                        <div class="file-types-grid">
+                            <div class="file-type-group">
+                                <span class="file-type-icon">🖼️</span>
+                                <div>
+                                    <strong>Images</strong><br>
+                                    <small>JPG, PNG, GIF → Pictures</small>
+                                </div>
+                            </div>
+                            <div class="file-type-group">
+                                <span class="file-type-icon">📄</span>
+                                <div>
+                                    <strong>Documents</strong><br>
+                                    <small>TXT, RTF, HTML → Books</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">📁</div>
+                        <p class="upload-text">Drag & drop files here or</p>
+                        <label for="fileInput" class="select-button">Choose Files</label>
+                        <input type="file" id="fileInput" class="file-input" multiple accept=".txt,.rtf,.html,.htm,.jpg,.jpeg,.png,.gif,.bmp,.webp">
+                    </div>
+                    
+                    <div class="file-list" id="fileList"></div>
+                    
+                    <button class="upload-button" id="uploadButton">Upload Files</button>
+                    
+                    <div class="progress-bar" id="progressBar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    
+                    <div class="status-message" id="statusMessage"></div>
+                </div>
+                
+                <script>
+                    const uploadArea = document.getElementById('uploadArea');
+                    const fileInput = document.getElementById('fileInput');
+                    const fileList = document.getElementById('fileList');
+                    const uploadButton = document.getElementById('uploadButton');
+                    const progressBar = document.getElementById('progressBar');
+                    const progressFill = document.getElementById('progressFill');
+                    const statusMessage = document.getElementById('statusMessage');
+                    
+                    let selectedFiles = [];
+                    
+                    const documentExtensions = ['txt', 'rtf', 'html', 'htm'];
+                    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+                    
+                    // File input change
+                    fileInput.addEventListener('change', (e) => {
+                        handleFiles(e.target.files);
+                    });
+                    
+                    // Drag and drop
+                    uploadArea.addEventListener('dragover', (e) => {
+                        e.preventDefault();
+                        uploadArea.classList.add('drag-over');
+                    });
+                    
+                    uploadArea.addEventListener('dragleave', () => {
+                        uploadArea.classList.remove('drag-over');
+                    });
+                    
+                    uploadArea.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        uploadArea.classList.remove('drag-over');
+                        handleFiles(e.dataTransfer.files);
+                    });
+                    
+                    // Click to select
+                    uploadArea.addEventListener('click', (e) => {
+                        if (e.target.tagName !== 'LABEL') {
+                            fileInput.click();
+                        }
+                    });
+                    
+                    function getFileExtension(filename) {
+                        return filename.split('.').pop().toLowerCase();
+                    }
+                    
+                    function getFileType(filename) {
+                        const ext = getFileExtension(filename);
+                        if (imageExtensions.includes(ext)) return 'image';
+                        if (documentExtensions.includes(ext)) return 'document';
+                        return 'unknown';
+                    }
+                    
+                    function handleFiles(files) {
+                        selectedFiles = Array.from(files);
+                        displayFiles();
+                        uploadButton.style.display = selectedFiles.length > 0 ? 'block' : 'none';
+                    }
+                    
+                    function displayFiles() {
+                        fileList.innerHTML = '';
+                    }
+                    
+                    function removeFile(index) {
+                        selectedFiles.splice(index, 1);
+                        displayFiles();
+                        uploadButton.style.display = selectedFiles.length > 0 ? 'block' : 'none';
+                    }
+                    
+                    function formatFileSize(bytes) {
+                        if (bytes === 0) return '0 Bytes';
+                        const k = 1024;
+                        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                        const i = Math.floor(Math.log(bytes) / Math.log(k));
+                        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+                    }
+                    
+                    uploadButton.addEventListener('click', async () => {
+                        if (selectedFiles.length === 0) return;
+                        
+                        uploadButton.disabled = true;
+                        progressBar.style.display = 'block';
+                        statusMessage.style.display = 'none';
+                        
+                        const formData = new FormData();
+                        selectedFiles.forEach(file => {
+                            formData.append('file', file);
+                        });
+                        
+                        try {
+                            const xhr = new XMLHttpRequest();
+                            
+                            xhr.upload.addEventListener('progress', (e) => {
+                                if (e.lengthComputable) {
+                                    const percentComplete = (e.loaded / e.total) * 100;
+                                    progressFill.style.width = percentComplete + '%';
+                                }
+                            });
+                            
+                            xhr.addEventListener('load', () => {
+                                if (xhr.status === 200) {
+                                    const response = JSON.parse(xhr.responseText);
+                                    const message = response.message || 'Files uploaded successfully!';
+                                    showStatus(message, 'success');
+                                    selectedFiles = [];
+                                    displayFiles();
+                                    uploadButton.style.display = 'none';
+                                    fileInput.value = '';
+                                } else {
+                                    showStatus('Upload failed. Please try again.', 'error');
+                                }
+                                uploadButton.disabled = false;
+                                progressBar.style.display = 'none';
+                                progressFill.style.width = '0%';
+                            });
+                            
+                            xhr.addEventListener('error', () => {
+                                showStatus('Upload failed. Please check your connection.', 'error');
+                                uploadButton.disabled = false;
+                                progressBar.style.display = 'none';
+                                progressFill.style.width = '0%';
+                            });
+                            
+                            xhr.open('POST', '/upload');
+                            xhr.send(formData);
+                            
+                        } catch (error) {
+                            showStatus('Upload failed: ' + error.message, 'error');
+                            uploadButton.disabled = false;
+                            progressBar.style.display = 'none';
+                        }
+                    });
+                    
+                    function showStatus(message, type) {
+                        statusMessage.textContent = message;
+                        statusMessage.className = 'status-message status-' + type;
+                        statusMessage.style.display = 'block';
+                        
+                        setTimeout(() => {
+                            statusMessage.style.display = 'none';
+                        }, 5000);
+                    }
+                </script>
+            </body>
+            </html>
+            """.trimIndent()
+
+            return newFixedLengthResponse(Response.Status.OK, "text/html", html)
+        }
+    }
+
+    private fun generateQRCode(url: String) {
+        try {
+            val writer = QRCodeWriter()
+            val bitMatrix = writer.encode(url, BarcodeFormat.QR_CODE, 512, 512)
+            val barcodeEncoder = BarcodeEncoder()
+            val bitmap: Bitmap = barcodeEncoder.createBitmap(bitMatrix)
+            binding.qrCodeImage.setImageBitmap(bitmap)
+        } catch (e: WriterException) {
+            Log.e(TAG, "Error generating QR code", e)
+            Toast.makeText(this, "Failed to generate QR code", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun getLocalIpAddress(): String {
+        try {
+            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            for (intf in interfaces) {
+                if (intf.isLoopback || !intf.isUp) continue
+
+                val addrs = Collections.list(intf.inetAddresses)
+                for (addr in addrs) {
+                    if (!addr.isLoopbackAddress) {
+                        val sAddr = addr.hostAddress
+                        val isIPv4 = (sAddr?.indexOf(':') ?: -1) < 0
+                        if (isIPv4 && sAddr != null) {
+                            if (sAddr.startsWith("192.168.") ||
+                                sAddr.startsWith("10.") ||
+                                sAddr.startsWith("172.")) {
+                                return sAddr
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fallback: try to get WiFi IP specifically
+            val wifiInterface = NetworkInterface.getByName("wlan0")
+            if (wifiInterface != null && wifiInterface.isUp) {
+                val addresses = Collections.list(wifiInterface.inetAddresses)
+                for (addr in addresses) {
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        return addr.hostAddress ?: "localhost"
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting IP address", e)
+        }
+
+        return "localhost"
+    }
+
+    private fun stopWebServer() {
+        webServer?.stop()
+        webServer = null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        stopWebServer()
+    }
+}
+
+adapter\BookAdapter.kt:
+// BookAdapter.kt
+package com.gnimble.typewriter.adapter
+
+import android.content.Intent
+import android.view.LayoutInflater
+import android.view.ViewGroup
+import androidx.appcompat.app.AlertDialog
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
+import com.gnimble.typewriter.R
+import com.gnimble.typewriter.ShareActivity
+import com.gnimble.typewriter.data.Book
+import com.gnimble.typewriter.databinding.ItemBookBinding
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
+import java.text.SimpleDateFormat
+import java.util.Locale
+
+class BookAdapter(
+    private val onBookClick: (Book) -> Unit,
+    private val onRenameBook: (Book, String) -> Unit,
+    private val onDeleteBook: (Book) -> Unit
+) : ListAdapter<Book, BookAdapter.BookViewHolder>(BookDiffCallback()) {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): BookViewHolder {
+        val binding = ItemBookBinding.inflate(
+            LayoutInflater.from(parent.context),
+            parent,
+            false
+        )
+        return BookViewHolder(binding)
+    }
+
+    override fun onBindViewHolder(holder: BookViewHolder, position: Int) {
+        holder.bind(getItem(position))
+    }
+
+    inner class BookViewHolder(
+        private val binding: ItemBookBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
+
+        fun bind(book: Book) {
+            binding.bookTitle.text = book.title
+            binding.bookSubtitle.text = if (book.subtitle.isNotEmpty()) {
+                book.subtitle
+            } else {
+                val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+                "Last edited: ${dateFormat.format(book.lastEdited)}"
+            }
+
+            binding.shareButton.setOnClickListener {
+                val context = binding.root.context
+                val intent = Intent(context, ShareActivity::class.java).apply {
+                    putExtra("book_id", book.id)
+                    putExtra("book_title", book.title)
+                    putExtra("book_subtitle", book.subtitle)
+                    putExtra("book_content", book.storyContent)
+                    putExtra("book_formatted_content", book.formattedContent)
+                    putExtra("book_font_name", book.fontName) // ** NEW **
+                }
+                context.startActivity(intent)
+            }
+
+            binding.menuButton.setOnClickListener {
+                showBottomMenu(book)
+            }
+
+            // Click listener for the entire card
+            binding.root.setOnClickListener {
+                onBookClick(book)
+            }
+        }
+
+        private fun showBottomMenu(book: Book) {
+            val context = binding.root.context
+            val bottomSheetDialog = BottomSheetDialog(context)
+
+            // Create the layout for the bottom sheet
+            val bottomSheetView = LayoutInflater.from(context).inflate(
+                R.layout.bottom_sheet_book_menu, null
+            )
+
+            bottomSheetDialog.setContentView(bottomSheetView)
+
+            // Handle Rename click
+            bottomSheetView.findViewById<ViewGroup>(R.id.menu_rename)?.setOnClickListener {
+                bottomSheetDialog.dismiss()
+                showRenameDialog(book)
+            }
+
+            // Handle Delete click
+            bottomSheetView.findViewById<ViewGroup>(R.id.menu_delete)?.setOnClickListener {
+                bottomSheetDialog.dismiss()
+                showDeleteConfirmationDialog(book)
+            }
+
+            bottomSheetDialog.show()
+        }
+
+        private fun showRenameDialog(book: Book) {
+            val context = binding.root.context
+            val dialogView = LayoutInflater.from(context).inflate(R.layout.dialog_rename_book, null)
+            val titleInput = dialogView.findViewById<TextInputEditText>(R.id.title_input)
+            val titleLayout = dialogView.findViewById<TextInputLayout>(R.id.title_layout)
+
+            // Pre-fill with current title
+            titleInput.setText(book.title)
+            titleInput.setSelection(book.title.length)
+
+            val dialog = AlertDialog.Builder(context)
+                .setTitle("Rename Story")
+                .setView(dialogView)
+                .setPositiveButton("Rename") { dialog, _ ->
+                    val newTitle = titleInput.text?.toString()?.trim()
+                    if (!newTitle.isNullOrEmpty() && newTitle != book.title) {
+                        onRenameBook(book, newTitle)
+                    }
+                    dialog.dismiss()
+                }
+                .setNegativeButton("Cancel") { dialog, _ ->
+                    dialog.dismiss()
+                }
+                .create()
+
+            dialog.show()
+
+            // Validate input on the fly
+            val positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            positiveButton.isEnabled = true
+
+            titleInput.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    val text = s?.toString()?.trim()
+                    val isValid = !text.isNullOrEmpty()
+                    positiveButton.isEnabled = isValid
+                    titleLayout.error = if (isValid) null else "Title is required"
+                }
+            })
+        }
+
+        private fun showDeleteConfirmationDialog(book: Book) {
+            val context = binding.root.context
+            AlertDialog.Builder(context)
+                .setTitle("Delete Story")
+                .setMessage("Are you sure you want to delete \"${book.title}\"? This action cannot be undone.")
+                .setPositiveButton("Delete") { dialog, _ ->
+                    onDeleteBook(book)
+                    dialog.dismiss()
+                }
+                .setNegativeButton("Cancel") { dialog, _ ->
+                    dialog.dismiss()
+                }
+                .show()
+        }
+    }
+
+    class BookDiffCallback : DiffUtil.ItemCallback<Book>() {
+        override fun areItemsTheSame(oldItem: Book, newItem: Book): Boolean {
+            return oldItem.id == newItem.id
+        }
+
+        override fun areContentsTheSame(oldItem: Book, newItem: Book): Boolean {
+            return oldItem == newItem
+        }
+    }
+}
+
+adapter\FontAdapter.kt:
+// FontAdapter.kt
+package com.gnimble.typewriter
+
+import android.content.Context
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ArrayAdapter
+import android.widget.TextView
+import com.gnimble.typewriter.data.FontItem
+
+class FontAdapter(
+    context: Context,
+    private val fonts: List<FontItem>
+) : ArrayAdapter<FontItem>(context, android.R.layout.simple_spinner_item, fonts) {
+
+    init {
+        setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+    }
+
+    override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+        val view = super.getView(position, convertView, parent) as TextView
+        val fontItem = fonts[position]
+        view.text = fontItem.name
+        fontItem.typeface?.let { view.typeface = it }
+        return view
+    }
+
+    override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
+        val view = super.getDropDownView(position, convertView, parent) as TextView
+        val fontItem = fonts[position]
+        view.text = fontItem.name
+        fontItem.typeface?.let { view.typeface = it }
+        return view
+    }
+}
+
+data\AppDatabase.kt:
+// AppDatabase.kt
+package com.gnimble.typewriter.data
+
+import android.content.Context
+import androidx.room.Database
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
+
+@Database(entities = [Book::class], version = 1, exportSchema = false)
+@TypeConverters(DateConverter::class)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun bookDao(): BookDao
+
+    companion object {
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
+
+        fun getDatabase(context: Context): AppDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "book_database"
+                )
+                    .fallbackToDestructiveMigration() // Add this for dev (wipes data on schema change)
+                    .build()
+                INSTANCE = instance
+                instance
+            }
+        }
+    }
+}
+
+data\Book.kt:
+// Book.kt
+package com.gnimble.typewriter.data
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import androidx.room.ColumnInfo
+import java.util.Date
+
+@Entity(tableName = "books")
+data class Book(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+
+    @ColumnInfo(name = "title")
+    val title: String,
+
+    @ColumnInfo(name = "subtitle")
+    val subtitle: String = "",
+
+    @ColumnInfo(name = "story_content")
+    val storyContent: String = "",  // Keep for backward compatibility
+
+    @ColumnInfo(name = "formatted_content")
+    val formattedContent: String? = null,  // New field for HTML/JSON formatted content
+
+    @ColumnInfo(name = "content_format")
+    val contentFormat: ContentFormat = ContentFormat.PLAIN_TEXT,  // Track format type
+
+    @ColumnInfo(name = "last_edited")
+    val lastEdited: Date = Date(),
+
+    @ColumnInfo(name = "created_date")
+    val createdDate: Date = Date(),
+
+    // ** NEW FIELD **
+    // Stores the resource entry name (e.g., "crimson_text" or "default")
+    @ColumnInfo(name = "font_name")
+    val fontName: String = "default"
+)
+
+enum class ContentFormat {
+    PLAIN_TEXT,
+    HTML,
+    JSON
+}
+
+// Extension functions for Book
+fun Book.getDisplayContent(): String {
+    return when (contentFormat) {
+        ContentFormat.PLAIN_TEXT -> storyContent
+        ContentFormat.HTML, ContentFormat.JSON -> formattedContent ?: storyContent
+    }
+}
+
+fun Book.hasFormatting(): Boolean {
+    return contentFormat != ContentFormat.PLAIN_TEXT && !formattedContent.isNullOrEmpty()
+}
+
+data\BookDao.kt:
+// BookDao.kt
+package com.gnimble.typewriter.data
+
+import androidx.lifecycle.LiveData
+import androidx.room.*
+import androidx.room.Query
+import java.util.Date
+
+@Dao
+interface BookDao {
+    @Query("SELECT * FROM books ORDER BY last_edited DESC")
+    fun getAllBooks(): LiveData<List<Book>>
+
+    @Query("SELECT * FROM books WHERE id = :bookId")
+    suspend fun getBook(bookId: Long): Book?
+
+    @Insert
+    suspend fun insertBook(book: Book): Long
+
+    @Update
+    suspend fun updateBook(book: Book)
+
+    @Delete
+    suspend fun deleteBook(book: Book)
+
+    @Query("UPDATE books SET last_edited = :date WHERE id = :bookId")
+    suspend fun updateLastEdited(bookId: Long, date: Date)
+}
+
+data\BookRepository.kt:
+// BookRepository.kt
+package com.gnimble.typewriter.data
+
+import androidx.lifecycle.LiveData
+import java.util.Date
+
+class BookRepository(private val bookDao: BookDao) {
+    val allBooks: LiveData<List<Book>> = bookDao.getAllBooks()
+
+    suspend fun insert(book: Book): Long {
+        return bookDao.insertBook(book)
+    }
+
+    suspend fun update(book: Book) {
+        bookDao.updateBook(book)
+    }
+
+    suspend fun delete(book: Book) {
+        bookDao.deleteBook(book)
+    }
+
+    suspend fun getBook(bookId: Long): Book? {
+        return bookDao.getBook(bookId)
+    }
+
+    suspend fun updateLastEdited(bookId: Long) {
+        bookDao.updateLastEdited(bookId, Date())
+    }
+}
+
+data\DateConverter.kt:
+// DateConverter.kt
+package com.gnimble.typewriter.data
+
+import androidx.room.TypeConverter
+import java.util.Date
+
+class DateConverter {
+    @TypeConverter
+    fun fromTimestamp(value: Long?): Date? {
+        return value?.let { Date(it) }
+    }
+
+    @TypeConverter
+    fun dateToTimestamp(date: Date?): Long? {
+        return date?.time
+    }
+}
+
+data\FontItem.kt:
+// FontItem.kt
+package com.gnimble.typewriter.data
+
+import android.graphics.Typeface
+
+data class FontItem(
+    val name: String,
+    val resourceEntryName: String,
+    val resourceId: Int,
+    val typeface: Typeface?
+)
+
+utils\SimpleHTMLHandler.kt:
+// SimpleHtmlHandler.kt
+package com.gnimble.typewriter.utils
+
+import android.text.style.*
+import android.graphics.drawable.Drawable
+import android.util.Base64
+import java.io.ByteArrayOutputStream
+import android.content.Context
+import android.graphics.Typeface
+import android.text.Html
+import android.text.Layout
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import androidx.core.content.res.ResourcesCompat
+import com.gnimble.typewriter.R
+import com.gnimble.typewriter.TypewriterView
+import com.gnimble.typewriter.data.FontItem
+import androidx.core.graphics.createBitmap
+
+class SimpleHtmlHandler(private val context: Context) {
+
+    // Store font items for lookup
+    private val fontItems: List<FontItem> by lazy {
+        initializeFontList()
+    }
+
+    private fun initializeFontList(): List<FontItem> {
+        val fontItems = mutableListOf<FontItem>()
+
+        // FIX: Update constructor to match FontItem(name, resourceEntryName, resourceId, typeface)
+        fontItems.add(FontItem("Default", "default", 0, Typeface.DEFAULT))
+
+        // Get all font resources dynamically
+        val fontFields = R.font::class.java.fields
+
+        for (field in fontFields) {
+            try {
+                val resourceId = field.getInt(null)
+
+                // FIX: Capture the field name as the resourceEntryName
+                val resourceEntryName = field.name
+
+                val fontName = formatFontName(field.name)
+                val typeface = ResourcesCompat.getFont(context, resourceId)
+
+                if (typeface != null) {
+                    // FIX: Pass resourceEntryName to the constructor
+                    fontItems.add(FontItem(fontName, resourceEntryName, resourceId, typeface))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        return fontItems
+    }
+
+    private fun formatFontName(resourceName: String): String {
+        return resourceName
+            .replace("_", " ")
+            .split(" ")
+            .joinToString(" ") { word ->
+                word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            }
+    }
+
+    fun spannableToHtml(spannable: Spannable, includeWrapper: Boolean = true): String {
+        val sb = StringBuilder()
+        if (includeWrapper) {
+            sb.append("<html><body>")
+        }
+
+        var lastPosition = 0
+        val text = spannable.toString()
+
+        // Group spans by their positions
+        data class SpanInfo(val span: Any, val start: Int, val end: Int)
+        val allSpans = mutableListOf<SpanInfo>()
+
+        spannable.getSpans(0, spannable.length, Any::class.java).forEach { span ->
+            allSpans.add(SpanInfo(span, spannable.getSpanStart(span), spannable.getSpanEnd(span)))
+        }
+
+        // Sort by start position
+        allSpans.sortBy { it.start }
+
+        // Track if we're in a paragraph with indentation
+        var currentParagraphIndented = false
+        var paragraphStart = 0
+
+        // Process text with spans
+        for (i in 0 until text.length) {
+            // Check if this is the start of a new paragraph
+            if (i == 0 || (i > 0 && text[i - 1] == '\n')) {
+                paragraphStart = i
+                // Check if this paragraph has FirstLineIndentSpan
+                currentParagraphIndented = allSpans.any { spanInfo ->
+                    spanInfo.span is TypewriterView.FirstLineIndentSpan &&
+                            spanInfo.start <= i && spanInfo.end > i
+                }
+
+                if (currentParagraphIndented) {
+                    sb.append("<p class=\"indented-paragraph\">")
+                } else {
+                    sb.append("<p>")
+                }
+            }
+
+            // Check for spans starting at this position
+            val startingSpans = allSpans.filter { it.start == i }
+            startingSpans.forEach { spanInfo ->
+                when (val span = spanInfo.span) {
+                    is StyleSpan -> {
+                        when (span.style) {
+                            Typeface.BOLD -> sb.append("<b>")
+                            Typeface.ITALIC -> sb.append("<i>")
+                            Typeface.BOLD_ITALIC -> sb.append("<b><i>")
+                        }
+                    }
+                    is AlignmentSpan.Standard -> {
+                        val align = when (span.alignment) {
+                            Layout.Alignment.ALIGN_CENTER -> "center"
+                            Layout.Alignment.ALIGN_OPPOSITE -> "right"
+                            else -> "left"
+                        }
+                        sb.append("<span data-alignment=\"$align\">")
+                    }
+                    is RelativeSizeSpan -> {
+                        sb.append("<span style=\"font-size: ${span.sizeChange}em;\">")
+                    }
+                    is TypewriterView.CustomTypefaceSpan -> {
+                        if (span.resourceId != 0) {
+                            val fontItem = fontItems.find { it.resourceId == span.resourceId }
+                            val fontName = fontItem?.name ?: ""
+                            sb.append("<span data-font-resource-id=\"${span.resourceId}\" data-font-name=\"$fontName\">")
+                        } else {
+                            sb.append("<span>")
+                        }
+                    }
+                    is TypefaceSpan -> {
+                        // This will catch regular TypefaceSpan that aren't CustomTypefaceSpan
+                        sb.append("<span style=\"font-family: '${span.family}';\">")
+                    }
+                    is ImageSpan -> {
+                        val drawable = span.drawable
+                        val base64Image = drawableToBase64(drawable)
+                        sb.append("<img src=\"data:image/png;base64,$base64Image\" />")
+                    }
+                    is TypewriterView.FirstLineIndentSpan -> {
+                        // Already handled at paragraph level
+                    }
+                }
+            }
+
+            // Add the character
+            when (text[i]) {
+                '<' -> sb.append("&lt;")
+                '>' -> sb.append("&gt;")
+                '&' -> sb.append("&amp;")
+                '"' -> sb.append("&quot;")
+                '\n' -> {
+                    sb.append("</p>")
+                }
+                else -> sb.append(text[i])
+            }
+
+            // Check for spans ending at this position + 1
+            val endingSpans = allSpans.filter { it.end == i + 1 }
+            endingSpans.forEach { spanInfo ->
+                when (val span = spanInfo.span) {
+                    is StyleSpan -> {
+                        when (span.style) {
+                            Typeface.BOLD -> sb.append("</b>")
+                            Typeface.ITALIC -> sb.append("</i>")
+                            Typeface.BOLD_ITALIC -> sb.append("</i></b>")
+                        }
+                    }
+                    is AlignmentSpan -> sb.append("</span>")
+                    is RelativeSizeSpan -> sb.append("</span>")
+                    is TypewriterView.CustomTypefaceSpan -> sb.append("</span>")
+                    is TypefaceSpan -> sb.append("</span>")
+                }
+            }
+        }
+
+        // Close any open paragraph
+        if (text.isEmpty() || text.last() != '\n') {
+            sb.append("</p>")
+        }
+
+        if (includeWrapper) {
+            sb.append("</body></html>")
+        }
+
+        return sb.toString()
+    }
+
+    fun htmlToSpannable(html: String): Spannable {
+        // First, parse the HTML to extract custom style information
+        val customStyles = parseCustomStylesInfo(html)
+
+        val spannableBuilder = SpannableStringBuilder()
+
+        // Parse HTML with custom handling for style attributes
+        val imageGetter = Html.ImageGetter { source ->
+            if (source.startsWith("data:image/")) {
+                try {
+                    val base64Data = source.substring(source.indexOf(",") + 1)
+                    val imageBytes = Base64.decode(base64Data, Base64.DEFAULT)
+                    val drawable = Drawable.createFromStream(
+                        imageBytes.inputStream(),
+                        "image"
+                    )
+                    drawable?.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
+                    drawable
+                } catch (e: Exception) {
+                    null
+                }
+            } else {
+                null
+            }
+        }
+
+        // Create a modified HTML that preserves structure but removes custom attributes
+        val modifiedHtml = removeCustomAttributes(html)
+
+        // Basic HTML parsing
+        val basicSpannable = Html.fromHtml(
+            modifiedHtml,
+            Html.FROM_HTML_MODE_COMPACT,
+            imageGetter,
+            null
+        )
+
+        spannableBuilder.append(basicSpannable)
+
+        // Apply custom styles based on the extracted information
+        applyCustomStyles(spannableBuilder, customStyles)
+
+        // Restore paragraph indentation
+        restoreParagraphIndentation(html, spannableBuilder)
+
+        return spannableBuilder
+    }
+
+    private data class CustomStyleInfo(
+        val type: String,
+        val value: String,
+        val content: String,
+        val startTag: String,
+        val endTag: String
+    )
+
+    private fun parseCustomStylesInfo(html: String): List<CustomStyleInfo> {
+        val styles = mutableListOf<CustomStyleInfo>()
+
+        // Parse font resource IDs
+        val fontPattern = Regex("""(<span\s+data-font-resource-id="(\d+)"[^>]*>)(.*?)(</span>)""", RegexOption.DOT_MATCHES_ALL)
+        fontPattern.findAll(html).forEach { match ->
+            styles.add(CustomStyleInfo(
+                type = "font-resource",
+                value = match.groupValues[2],
+                content = match.groupValues[3],
+                startTag = match.groupValues[1],
+                endTag = match.groupValues[4]
+            ))
+        }
+
+        // Parse alignments
+        val alignmentPattern = Regex("""(<span\s+data-alignment="(\w+)"[^>]*>)(.*?)(</span>)""", RegexOption.DOT_MATCHES_ALL)
+        alignmentPattern.findAll(html).forEach { match ->
+            styles.add(CustomStyleInfo(
+                type = "alignment",
+                value = match.groupValues[2],
+                content = match.groupValues[3],
+                startTag = match.groupValues[1],
+                endTag = match.groupValues[4]
+            ))
+        }
+
+        return styles
+    }
+
+    private fun removeCustomAttributes(html: String): String {
+        var result = html
+        // Remove custom data attributes but keep the span tags
+        result = result.replace(Regex("""\s+data-font-resource-id="\d+""""), "")
+        result = result.replace(Regex("""\s+data-font-name="[^"]*""""), "")
+        result = result.replace(Regex("""\s+data-alignment="\w+""""), "")
+        return result
+    }
+
+    private fun applyCustomStyles(spannable: SpannableStringBuilder, styles: List<CustomStyleInfo>) {
+        for (style in styles) {
+            // Get the plain text content (strip HTML tags)
+            val plainContent = style.content
+                .replace(Regex("<[^>]+>"), "")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+                .replace("&quot;", "\"")
+                .trim()
+
+            if (plainContent.isEmpty()) continue
+
+            // Find all occurrences of this content in the spannable
+            var searchStart = 0
+            while (searchStart < spannable.length) {
+                val startIndex = spannable.toString().indexOf(plainContent, searchStart)
+                if (startIndex == -1) break
+
+                val endIndex = startIndex + plainContent.length
+
+                when (style.type) {
+                    "font-resource" -> {
+                        val resourceId = style.value.toIntOrNull()
+                        if (resourceId != null && resourceId != 0) {
+                            // Check if this span already has a font applied
+                            val existingFontSpans = spannable.getSpans(
+                                startIndex, endIndex,
+                                TypewriterView.CustomTypefaceSpan::class.java
+                            )
+
+                            if (existingFontSpans.isEmpty()) {
+                                val typeface = try {
+                                    ResourcesCompat.getFont(context, resourceId)
+                                } catch (e: Exception) {
+                                    null
+                                }
+
+                                if (typeface != null) {
+                                    spannable.setSpan(
+                                        TypewriterView.CustomTypefaceSpan(typeface, resourceId),
+                                        startIndex,
+                                        endIndex,
+                                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    "alignment" -> {
+                        val alignment = when (style.value) {
+                            "center" -> Layout.Alignment.ALIGN_CENTER
+                            "right" -> Layout.Alignment.ALIGN_OPPOSITE
+                            else -> Layout.Alignment.ALIGN_NORMAL
+                        }
+
+                        spannable.setSpan(
+                            AlignmentSpan.Standard(alignment),
+                            startIndex,
+                            endIndex,
+                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+                    }
+                }
+
+                searchStart = startIndex + 1
+            }
+        }
+    }
+
+    private fun restoreParagraphIndentation(html: String, spannable: SpannableStringBuilder) {
+        // Calculate tab indent (1/4 inch in pixels)
+        val tabIndentPixels = (0.25f * context.resources.displayMetrics.densityDpi).toInt()
+
+        // Find all indented paragraphs
+        val indentedParagraphPattern = Regex("""<p\s+class="indented-paragraph">(.*?)</p>""", RegexOption.DOT_MATCHES_ALL)
+
+        indentedParagraphPattern.findAll(html).forEach { matchResult ->
+            val content = matchResult.groupValues[1]
+            // Remove any nested HTML tags to get plain text
+            val plainContent = content.replace(Regex("<[^>]+>"), "")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+                .replace("&quot;", "\"")
+
+            // Find this paragraph in the spannable
+            var searchStart = 0
+            while (searchStart < spannable.length) {
+                val startIndex = spannable.toString().indexOf(plainContent, searchStart)
+                if (startIndex == -1) break
+
+                // Find the end of this paragraph (next newline or end of text)
+                var endIndex = spannable.toString().indexOf('\n', startIndex)
+                if (endIndex == -1) {
+                    endIndex = spannable.length
+                } else {
+                    endIndex++ // Include the newline
+                }
+
+                // Apply FirstLineIndentSpan
+                spannable.setSpan(
+                    TypewriterView.FirstLineIndentSpan(tabIndentPixels),
+                    startIndex,
+                    endIndex,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                )
+                break
+            }
+        }
+    }
+
+    private fun drawableToBase64(drawable: Drawable): String {
+        val bitmap = createBitmap(drawable.intrinsicWidth, drawable.intrinsicHeight)
+        val canvas = android.graphics.Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+
+        val baos = ByteArrayOutputStream()
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, baos)
+        val imageBytes = baos.toByteArray()
+        return Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+    }
+}
+
+utils\UpdateManager.kt:
+// UpdateManager.kt
+package com.gnimble.typewriter.utils
+
+import android.annotation.SuppressLint
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.FileProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+
+class UpdateManager(private val context: Context) {
+
+    companion object {
+        private const val UPDATE_CHECK_URL = "https://cinemint.online/static/typewriter/version.json"
+        private const val APK_FILENAME = "typewriter-update.apk"
+        private const val REQUEST_INSTALL_PACKAGES = 1001
+    }
+
+    private var downloadId: Long = -1
+    private var progressDialog: AlertDialog? = null
+
+    data class UpdateInfo(
+        val versionCode: Int,
+        val versionName: String,
+        val apkUrl: String,
+        val releaseNotes: String = "",
+        val minSdkVersion: Int = 21,
+        val fileSizeBytes: Long = 0
+    )
+
+    fun checkForUpdates(onComplete: (Boolean) -> Unit = {}) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val updateInfo = fetchUpdateInfo()
+                val currentVersionCode = getCurrentVersionCode()
+
+                withContext(Dispatchers.Main) {
+                    when {
+                        updateInfo == null -> {
+                            showMessage("Unable to check for updates. Please try again later.")
+                            onComplete(false)
+                        }
+                        updateInfo.versionCode > currentVersionCode -> {
+                            showUpdateDialog(updateInfo)
+                            onComplete(true)
+                        }
+                        else -> {
+                            showMessage("You're running the latest version!")
+                            onComplete(false)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    showMessage("Update check failed: ${e.message}")
+                    onComplete(false)
+                }
+            }
+        }
+    }
+
+    private suspend fun fetchUpdateInfo(): UpdateInfo? = withContext(Dispatchers.IO) {
+        try {
+            val url = URL(UPDATE_CHECK_URL)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+
+            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(response)
+
+                UpdateInfo(
+                    versionCode = json.getInt("versionCode"),
+                    versionName = json.getString("versionName"),
+                    apkUrl = json.getString("apkUrl"),
+                    releaseNotes = json.optString("releaseNotes", ""),
+                    minSdkVersion = json.optInt("minSdkVersion", 21),
+                    fileSizeBytes = json.optLong("fileSizeBytes", 0)
+                )
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun getCurrentVersionCode(): Int {
+        return try {
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }
+
+            packageInfo.longVersionCode.toInt()
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    private fun showUpdateDialog(updateInfo: UpdateInfo) {
+        val message = buildString {
+            append("A new version is available!\n\n")
+            append("Current version: ${getCurrentVersionName()}\n")
+            append("New version: ${updateInfo.versionName}\n")
+            if (updateInfo.fileSizeBytes > 0) {
+                append("Download size: ${formatFileSize(updateInfo.fileSizeBytes)}\n")
+            }
+            if (updateInfo.releaseNotes.isNotEmpty()) {
+                append("\nWhat's new:\n${updateInfo.releaseNotes}")
+            }
+        }
+
+        AlertDialog.Builder(context)
+            .setTitle("Update Available")
+            .setMessage(message)
+            .setPositiveButton("Update") { dialog, _ ->
+                dialog.dismiss()
+                checkAndRequestInstallPermission(updateInfo)
+            }
+            .setNegativeButton("Later") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .setCancelable(true)
+            .show()
+    }
+
+    private fun checkAndRequestInstallPermission(updateInfo: UpdateInfo) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!context.packageManager.canRequestPackageInstalls()) {
+                AlertDialog.Builder(context)
+                    .setTitle("Permission Required")
+                    .setMessage("To install updates, please enable 'Install unknown apps' permission for this app.")
+                    .setPositiveButton("Open Settings") { dialog, _ ->
+                        dialog.dismiss()
+                        val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                        }
+                        context.startActivity(intent)
+                    }
+                    .setNegativeButton("Cancel") { dialog, _ ->
+                        dialog.dismiss()
+                    }
+                    .show()
+                return
+            }
+        }
+
+        downloadUpdate(updateInfo)
+    }
+
+    private fun downloadUpdate(updateInfo: UpdateInfo) {
+        showProgressDialog()
+
+        try {
+            // Delete any existing update file
+            val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), APK_FILENAME)
+            if (file.exists()) {
+                file.delete()
+            }
+
+            // Create download request
+            val request = DownloadManager.Request(Uri.parse(updateInfo.apkUrl))
+                .setTitle("Downloading Typewriter Update")
+                .setDescription("Version ${updateInfo.versionName}")
+                .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, APK_FILENAME)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true)
+
+            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            downloadId = downloadManager.enqueue(request)
+
+            // Register receiver for download completion
+            context.registerReceiver(
+                downloadReceiver,
+                IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+                Context.RECEIVER_NOT_EXPORTED
+            )
+
+        } catch (e: Exception) {
+            dismissProgressDialog()
+            showMessage("Download failed: ${e.message}")
+        }
+    }
+
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
+            if (id == downloadId) {
+                context.unregisterReceiver(this)
+                dismissProgressDialog()
+
+                val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                val query = DownloadManager.Query().setFilterById(downloadId)
+                val cursor = downloadManager.query(query)
+
+                if (cursor.moveToFirst()) {
+                    val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+
+                    when (status) {
+                        DownloadManager.STATUS_SUCCESSFUL -> {
+                            val localUri = cursor.getString(
+                                cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI)
+                            )
+                            installApk(Uri.parse(localUri))
+                        }
+                        DownloadManager.STATUS_FAILED -> {
+                            val reason = cursor.getInt(
+                                cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)
+                            )
+                            showMessage("Download failed. Error code: $reason")
+                        }
+                    }
+                }
+                cursor.close()
+            }
+        }
+    }
+
+    private fun installApk(apkUri: Uri) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    // For Android N and above, use FileProvider
+                    val file = File(apkUri.path ?: return)
+                    val contentUri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        file
+                    )
+                    setDataAndType(contentUri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } else {
+                    // For older versions
+                    setDataAndType(apkUri, "application/vnd.android.package-archive")
+                }
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            showMessage("Installation failed: ${e.message}")
+        }
+    }
+
+    private fun showProgressDialog() {
+        progressDialog = AlertDialog.Builder(context)
+            .setTitle("Downloading Update")
+            .setMessage("Please wait...")
+            .setCancelable(false)
+            .setNegativeButton("Cancel") { dialog, _ ->
+                cancelDownload()
+                dialog.dismiss()
+            }
+            .create()
+        progressDialog?.show()
+    }
+
+    private fun dismissProgressDialog() {
+        progressDialog?.dismiss()
+        progressDialog = null
+    }
+
+    private fun cancelDownload() {
+        if (downloadId != -1L) {
+            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            downloadManager.remove(downloadId)
+            downloadId = -1
+            try {
+                context.unregisterReceiver(downloadReceiver)
+            } catch (e: Exception) {
+                // Receiver might not be registered
+            }
+        }
+    }
+
+    private fun getCurrentVersionName(): String {
+        return try {
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }
+            packageInfo.versionName
+        } catch (e: Exception) {
+            "Unknown"
+        }.toString()
+    }
+
+    @SuppressLint("DefaultLocale")
+    private fun formatFileSize(bytes: Long): String {
+        val kb = bytes / 1024.0
+        val mb = kb / 1024.0
+        return when {
+            mb >= 1 -> String.format("%.1f MB", mb)
+            kb >= 1 -> String.format("%.1f KB", kb)
+            else -> "$bytes bytes"
+        }
+    }
+
+    private fun showMessage(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+    }
+}
+
+viewmodel\MainViewModel.kt:
+// MainViewModel.kt
+package com.gnimble.typewriter.viewmodel
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.viewModelScope
+import com.gnimble.typewriter.data.AppDatabase
+import com.gnimble.typewriter.data.Book
+import com.gnimble.typewriter.data.BookRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class MainViewModel(application: Application) : AndroidViewModel(application) {
+    private val repository: BookRepository
+    val allBooks: LiveData<List<Book>>
+
+    init {
+        val bookDao = AppDatabase.getDatabase(application).bookDao()
+        repository = BookRepository(bookDao)
+        allBooks = repository.allBooks
+    }
+
+    fun insert(book: Book, onComplete: (Long) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = repository.insert(book)
+            withContext(Dispatchers.Main) {
+                onComplete(bookId)
+            }
+        }
+    }
+
+    fun update(book: Book) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.update(book)
+        }
+    }
+
+    fun delete(book: Book) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.delete(book)
+        }
+    }
+
+    fun updateLastEdited(bookId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateLastEdited(bookId)
+        }
+    }
+
+    suspend fun getBook(bookId: Long): Book? {
+        return withContext(Dispatchers.IO) {
+            repository.getBook(bookId)
+        }
+    }
+}

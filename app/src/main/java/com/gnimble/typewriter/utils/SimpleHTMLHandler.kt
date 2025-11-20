@@ -27,8 +27,8 @@ class SimpleHtmlHandler(private val context: Context) {
     private fun initializeFontList(): List<FontItem> {
         val fontItems = mutableListOf<FontItem>()
 
-        // Add default font first
-        fontItems.add(FontItem("Default", 0, Typeface.DEFAULT))
+        // FIX: Update constructor to match FontItem(name, resourceEntryName, resourceId, typeface)
+        fontItems.add(FontItem("Default", "default", 0, Typeface.DEFAULT))
 
         // Get all font resources dynamically
         val fontFields = R.font::class.java.fields
@@ -36,11 +36,16 @@ class SimpleHtmlHandler(private val context: Context) {
         for (field in fontFields) {
             try {
                 val resourceId = field.getInt(null)
+
+                // FIX: Capture the field name as the resourceEntryName
+                val resourceEntryName = field.name
+
                 val fontName = formatFontName(field.name)
                 val typeface = ResourcesCompat.getFont(context, resourceId)
 
                 if (typeface != null) {
-                    fontItems.add(FontItem(fontName, resourceId, typeface))
+                    // FIX: Pass resourceEntryName to the constructor
+                    fontItems.add(FontItem(fontName, resourceEntryName, resourceId, typeface))
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -65,35 +70,26 @@ class SimpleHtmlHandler(private val context: Context) {
             sb.append("<html><body>")
         }
 
-        var lastPosition = 0
         val text = spannable.toString()
 
-        // Group spans by their positions
         data class SpanInfo(val span: Any, val start: Int, val end: Int)
         val allSpans = mutableListOf<SpanInfo>()
 
         spannable.getSpans(0, spannable.length, Any::class.java).forEach { span ->
             allSpans.add(SpanInfo(span, spannable.getSpanStart(span), spannable.getSpanEnd(span)))
         }
-
-        // Sort by start position
         allSpans.sortBy { it.start }
 
-        // Track if we're in a paragraph with indentation
-        var currentParagraphIndented = false
         var paragraphStart = 0
 
-        // Process text with spans
         for (i in 0 until text.length) {
-            // Check if this is the start of a new paragraph
+            // Paragraph handling...
             if (i == 0 || (i > 0 && text[i - 1] == '\n')) {
                 paragraphStart = i
-                // Check if this paragraph has FirstLineIndentSpan
-                currentParagraphIndented = allSpans.any { spanInfo ->
+                val currentParagraphIndented = allSpans.any { spanInfo ->
                     spanInfo.span is TypewriterView.FirstLineIndentSpan &&
                             spanInfo.start <= i && spanInfo.end > i
                 }
-
                 if (currentParagraphIndented) {
                     sb.append("<p class=\"indented-paragraph\">")
                 } else {
@@ -101,7 +97,7 @@ class SimpleHtmlHandler(private val context: Context) {
                 }
             }
 
-            // Check for spans starting at this position
+            // Start Spans
             val startingSpans = allSpans.filter { it.start == i }
             startingSpans.forEach { spanInfo ->
                 when (val span = spanInfo.span) {
@@ -121,7 +117,9 @@ class SimpleHtmlHandler(private val context: Context) {
                         sb.append("<span data-alignment=\"$align\">")
                     }
                     is RelativeSizeSpan -> {
-                        sb.append("<span style=\"font-size: ${span.sizeChange}em;\">")
+                        // ** FIXED: Added data-font-size attribute so we can restore it later **
+                        // We keep the style tag so web viewers still see the size.
+                        sb.append("<span style=\"font-size: ${span.sizeChange}em;\" data-font-size=\"${span.sizeChange}\">")
                     }
                     is TypewriterView.CustomTypefaceSpan -> {
                         if (span.resourceId != 0) {
@@ -132,34 +130,25 @@ class SimpleHtmlHandler(private val context: Context) {
                             sb.append("<span>")
                         }
                     }
-                    is TypefaceSpan -> {
-                        // This will catch regular TypefaceSpan that aren't CustomTypefaceSpan
-                        sb.append("<span style=\"font-family: '${span.family}';\">")
-                    }
                     is ImageSpan -> {
                         val drawable = span.drawable
                         val base64Image = drawableToBase64(drawable)
                         sb.append("<img src=\"data:image/png;base64,$base64Image\" />")
                     }
-                    is TypewriterView.FirstLineIndentSpan -> {
-                        // Already handled at paragraph level
-                    }
                 }
             }
 
-            // Add the character
+            // Append Text
             when (text[i]) {
                 '<' -> sb.append("&lt;")
                 '>' -> sb.append("&gt;")
                 '&' -> sb.append("&amp;")
                 '"' -> sb.append("&quot;")
-                '\n' -> {
-                    sb.append("</p>")
-                }
+                '\n' -> sb.append("</p>")
                 else -> sb.append(text[i])
             }
 
-            // Check for spans ending at this position + 1
+            // End Spans
             val endingSpans = allSpans.filter { it.end == i + 1 }
             endingSpans.forEach { spanInfo ->
                 when (val span = spanInfo.span) {
@@ -171,28 +160,19 @@ class SimpleHtmlHandler(private val context: Context) {
                         }
                     }
                     is AlignmentSpan -> sb.append("</span>")
-                    is RelativeSizeSpan -> sb.append("</span>")
+                    is RelativeSizeSpan -> sb.append("</span>") // Closes the font-size span
                     is TypewriterView.CustomTypefaceSpan -> sb.append("</span>")
-                    is TypefaceSpan -> sb.append("</span>")
                 }
             }
         }
 
-        // Close any open paragraph
         if (text.isEmpty() || text.last() != '\n') {
             sb.append("</p>")
         }
-
         if (includeWrapper) {
             sb.append("</body></html>")
         }
-
         return sb.toString()
-    }
-
-    // Keep the original method signature for backward compatibility
-    fun spannableToHtml(spannable: Spannable): String {
-        return spannableToHtml(spannable, true)
     }
 
     fun htmlToSpannable(html: String): Spannable {
@@ -278,6 +258,19 @@ class SimpleHtmlHandler(private val context: Context) {
             ))
         }
 
+        // ** FIXED: Added parsing for data-font-size **
+        // Note: Regex allows for other attributes (like style) to appear before the data attribute
+        val fontSizePattern = Regex("""(<span\s+.*?data-font-size="([\d.]+)"[^>]*>)(.*?)(</span>)""", RegexOption.DOT_MATCHES_ALL)
+        fontSizePattern.findAll(html).forEach { match ->
+            styles.add(CustomStyleInfo(
+                type = "font-size",
+                value = match.groupValues[2],
+                content = match.groupValues[3],
+                startTag = match.groupValues[1],
+                endTag = match.groupValues[4]
+            ))
+        }
+
         return styles
     }
 
@@ -287,12 +280,14 @@ class SimpleHtmlHandler(private val context: Context) {
         result = result.replace(Regex("""\s+data-font-resource-id="\d+""""), "")
         result = result.replace(Regex("""\s+data-font-name="[^"]*""""), "")
         result = result.replace(Regex("""\s+data-alignment="\w+""""), "")
+        // ** FIXED: Clean up the font size attribute **
+        result = result.replace(Regex("""\s+data-font-size="[\d.]*""""), "")
         return result
     }
 
     private fun applyCustomStyles(spannable: SpannableStringBuilder, styles: List<CustomStyleInfo>) {
         for (style in styles) {
-            // Get the plain text content (strip HTML tags)
+            // Get the plain text content (strip HTML tags) to find it in the Spannable
             val plainContent = style.content
                 .replace(Regex("<[^>]+>"), "")
                 .replace("&lt;", "<")
@@ -303,7 +298,6 @@ class SimpleHtmlHandler(private val context: Context) {
 
             if (plainContent.isEmpty()) continue
 
-            // Find all occurrences of this content in the spannable
             var searchStart = 0
             while (searchStart < spannable.length) {
                 val startIndex = spannable.toString().indexOf(plainContent, searchStart)
@@ -315,27 +309,21 @@ class SimpleHtmlHandler(private val context: Context) {
                     "font-resource" -> {
                         val resourceId = style.value.toIntOrNull()
                         if (resourceId != null && resourceId != 0) {
-                            // Check if this span already has a font applied
                             val existingFontSpans = spannable.getSpans(
                                 startIndex, endIndex,
                                 TypewriterView.CustomTypefaceSpan::class.java
                             )
-
                             if (existingFontSpans.isEmpty()) {
-                                val typeface = try {
-                                    ResourcesCompat.getFont(context, resourceId)
-                                } catch (e: Exception) {
-                                    null
-                                }
-
-                                if (typeface != null) {
-                                    spannable.setSpan(
-                                        TypewriterView.CustomTypefaceSpan(typeface, resourceId),
-                                        startIndex,
-                                        endIndex,
-                                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                                    )
-                                }
+                                try {
+                                    val typeface = ResourcesCompat.getFont(context, resourceId)
+                                    if (typeface != null) {
+                                        spannable.setSpan(
+                                            TypewriterView.CustomTypefaceSpan(typeface, resourceId),
+                                            startIndex, endIndex,
+                                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                                        )
+                                    }
+                                } catch (e: Exception) { /* Ignore */ }
                             }
                         }
                     }
@@ -345,16 +333,24 @@ class SimpleHtmlHandler(private val context: Context) {
                             "right" -> Layout.Alignment.ALIGN_OPPOSITE
                             else -> Layout.Alignment.ALIGN_NORMAL
                         }
-
                         spannable.setSpan(
                             AlignmentSpan.Standard(alignment),
-                            startIndex,
-                            endIndex,
+                            startIndex, endIndex,
                             Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                         )
                     }
+                    // ** FIXED: Apply RelativeSizeSpan for headings **
+                    "font-size" -> {
+                        val size = style.value.toFloatOrNull()
+                        if (size != null && size != 1.0f) {
+                            spannable.setSpan(
+                                RelativeSizeSpan(size),
+                                startIndex, endIndex,
+                                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                            )
+                        }
+                    }
                 }
-
                 searchStart = startIndex + 1
             }
         }

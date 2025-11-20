@@ -5,6 +5,7 @@ import android.graphics.Typeface
 
 data class FontItem(
     val name: String,
+    val resourceEntryName: String,
     val resourceId: Int,
     val typeface: Typeface?
 )
