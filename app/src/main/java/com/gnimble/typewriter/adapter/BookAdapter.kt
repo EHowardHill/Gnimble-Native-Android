@@ -54,11 +54,6 @@ class BookAdapter(
                 val context = binding.root.context
                 val intent = Intent(context, ShareActivity::class.java).apply {
                     putExtra("book_id", book.id)
-                    putExtra("book_title", book.title)
-                    putExtra("book_subtitle", book.subtitle)
-                    putExtra("book_content", book.storyContent)
-                    putExtra("book_formatted_content", book.formattedContent)
-                    putExtra("book_font_name", book.fontName) // ** NEW **
                 }
                 context.startActivity(intent)
             }

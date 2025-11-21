@@ -4,10 +4,10 @@
     <selectionStates>
       <SelectionState runConfigName="Gnimble.app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2025-11-20T19:12:37.598856700Z">
+        <DropdownSelection timestamp="2025-11-21T02:04:44.767849100Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\ethan\.android\avd\Pixel_Tablet.avd" />
+              <DeviceId pluginId="PhysicalDevice" identifier="serial=E603P25080215" />
             </handle>
           </Target>
         </DropdownSelection>

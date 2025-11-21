@@ -1,8 +1,41 @@
-EditorActivity.kt:
-// EditorActivity.kt
+AboutActivity.kt:
+// AboutActivity.kt
 package com.gnimble.typewriter
 
-import android.content.Intent
+import android.graphics.BitmapFactory
+import android.os.Bundle
+import android.widget.Button
+import android.widget.ImageView
+import android.app.Activity
+
+class AboutActivity : Activity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_about)
+
+        // 1. Load image from raw resource
+        val imageView = findViewById<ImageView>(R.id.about_image)
+        try {
+            // Decode the raw stream into a Bitmap
+            val inputStream = resources.openRawResource(R.raw.about_image)
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            imageView.setImageBitmap(bitmap)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // Optional: Set a fallback image if loading fails
+            // imageView.setImageResource(R.drawable.ic_launcher_foreground)
+        }
+
+        // 2. Close button logic
+        findViewById<Button>(R.id.btn_close).setOnClickListener {
+            finish()
+        }
+    }
+}
+
+EditorActivity.kt:
+package com.gnimble.typewriter
+
 import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Html
@@ -12,8 +45,8 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.EditText // Added import
-import android.widget.Toast // Added import
+import android.widget.EditText
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.res.ResourcesCompat
@@ -24,7 +57,9 @@ import com.gnimble.typewriter.data.ContentFormat
 import com.gnimble.typewriter.data.FontItem
 import com.gnimble.typewriter.databinding.ActivityEditorBinding
 import com.gnimble.typewriter.utils.SimpleHtmlHandler
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -37,7 +72,7 @@ class EditorActivity : AppCompatActivity() {
     private var currentBook: Book? = null
     private val database by lazy { AppDatabase.getDatabase(this) }
 
-    // Font list - you'll need to add your actual font resource IDs here
+    // Font list
     private lateinit var fontList: List<FontItem>
 
     // Heading styles
@@ -48,7 +83,7 @@ class EditorActivity : AppCompatActivity() {
         HeadingStyle("Chapter", 1.75f)
     )
 
-    // New property to track find/replace state
+    // Property to track find/replace state
     private var lastFoundIndex: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,11 +100,13 @@ class EditorActivity : AppCompatActivity() {
 
         supportActionBar?.title = bookTitle
 
+        // Initialize fonts BEFORE loading the book so the list is ready
+        initializeFontList()
+
         if (bookId != -1L) {
             loadBook()
         }
 
-        initializeFontList()
         setupHeadingDropdown()
         setupFontDropdown()
         setupFormatButtons()
@@ -89,6 +126,8 @@ class EditorActivity : AppCompatActivity() {
                 val resourceId = field.getInt(null)
                 val resourceEntryName = field.name // e.g. "crimson_text"
                 val fontName = formatFontName(field.name)
+
+                // This calls the helper method defined below
                 val typeface = loadFont(resourceId)
 
                 if (typeface != null) {
@@ -101,10 +140,8 @@ class EditorActivity : AppCompatActivity() {
         fontList = listOf(fontItems[0]) + fontItems.drop(1).sortedBy { it.name }
     }
 
+    // Helper method to format font names (e.g. "crimson_text" -> "Crimson Text")
     private fun formatFontName(resourceName: String): String {
-        // Convert resource name to readable format
-        // e.g., "roboto_regular" -> "Roboto Regular"
-        // e.g., "open_sans_bold" -> "Open Sans Bold"
         return resourceName
             .replace("_", " ")
             .split(" ")
@@ -113,6 +150,7 @@ class EditorActivity : AppCompatActivity() {
             }
     }
 
+    // Helper method to load Typeface from resource ID
     private fun loadFont(resourceId: Int): Typeface? {
         return try {
             ResourcesCompat.getFont(this, resourceId)
@@ -204,7 +242,6 @@ class EditorActivity : AppCompatActivity() {
                 )
 
                 // Get current font name from the dropdown/typewriter view state
-                // We find the font that matches the current Typeface or pull from dropdown position
                 val selectedPosition = binding.actionFontSelection.selectedItemPosition
                 val currentFontName = if (selectedPosition >= 0 && selectedPosition < fontList.size) {
                     fontList[selectedPosition].resourceEntryName
@@ -218,7 +255,7 @@ class EditorActivity : AppCompatActivity() {
                     contentFormat = ContentFormat.HTML,
                     lastEdited = Date(),
                     subtitle = "Last edited: ${SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date())}",
-                    fontName = currentFontName // ** SAVE THE FONT **
+                    fontName = currentFontName
                 )
                 database.bookDao().updateBook(updatedBook)
                 currentBook = updatedBook
@@ -227,57 +264,74 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun loadBook() {
+        // 1. Show loading state immediately on Main Thread
+        binding.loadingProgress.visibility = View.VISIBLE
+        binding.typewriter.visibility = View.INVISIBLE
+
         lifecycleScope.launch {
             currentBook = database.bookDao().getBook(bookId)
             currentBook?.let { book ->
-                try {
-                    val htmlHandler = SimpleHtmlHandler(this@EditorActivity)
 
-                    // Use formatted content if available, otherwise use story content
-                    val contentToLoad = if (book.contentFormat == ContentFormat.HTML && !book.formattedContent.isNullOrEmpty()) {
-                        // If the content doesn't have HTML wrapper, add it for parsing
-                        val content = book.formattedContent
-                        if (!content.startsWith("<html>") && !content.startsWith("<!DOCTYPE")) {
-                            "<html><body>$content</body></html>"
+                try {
+                    // 2. Switch to IO thread for heavy parsing logic
+                    // This prevents the UI (and progress bar) from freezing
+                    val (spannableContent, fontToSelect) = withContext(Dispatchers.IO) {
+                        val htmlHandler = SimpleHtmlHandler(this@EditorActivity)
+
+                        // Prepare content string
+                        val contentToLoad = if (book.contentFormat == ContentFormat.HTML && !book.formattedContent.isNullOrEmpty()) {
+                            val content = book.formattedContent!!
+                            if (!content.startsWith("<html>") && !content.startsWith("<!DOCTYPE")) {
+                                "<html><body>$content</body></html>"
+                            } else {
+                                content
+                            }
                         } else {
-                            content
+                            "<html><body><p>${book.storyContent.replace("\n", "</p><p>")}</p></body></html>"
                         }
-                    } else {
-                        // Convert plain text to HTML
-                        "<html><body><p>${book.storyContent.replace("\n", "</p><p>")}</p></body></html>"
+
+                        // HEAVY OPERATION: Parse HTML to Spannable
+                        val spannable = htmlHandler.htmlToSpannable(contentToLoad)
+
+                        // Identify the font object
+                        val font = fontList.find { it.resourceEntryName == book.fontName } ?: fontList[0]
+
+                        // Return results as a Pair
+                        Pair(spannable, font)
                     }
 
-                    val spannable = htmlHandler.htmlToSpannable(contentToLoad)
-                    val fontToSelect = fontList.find { it.resourceEntryName == book.fontName }
-                        ?: fontList[0] // Fallback to default
+                    // 3. Switch back to Main Thread to update UI
 
-                    // update dropdown UI
+                    // Update dropdown selection
                     val spinnerPosition = fontList.indexOf(fontToSelect)
                     if (spinnerPosition >= 0) {
                         binding.actionFontSelection.setSelection(spinnerPosition)
                     }
 
-                    // ** FIX: Set the content FIRST **
-                    binding.typewriter.setContent(spannable)
-
-                    // ** FIX: Apply font SECOND (sets typeface and cleans up legacy spans in the text) **
+                    // Set content and global font
+                    binding.typewriter.setContent(spannableContent)
                     binding.typewriter.setGlobalFont(fontToSelect)
 
                     supportActionBar?.title = book.title
+
                 } catch (e: Exception) {
-                    // Fallback to simple HTML parsing
+                    e.printStackTrace()
+                    // Fallback logic
                     try {
-                        val spannable = Html.fromHtml(
+                        val fallbackSpannable = Html.fromHtml(
                             book.storyContent,
                             Html.FROM_HTML_MODE_COMPACT
                         )
-                        binding.typewriter.setContent(spannable)
+                        binding.typewriter.setContent(fallbackSpannable)
                     } catch (e2: Exception) {
-                        // Last resort: plain text
                         binding.typewriter.setContent(book.storyContent)
                     }
                 }
             }
+
+            // 4. Hide loading state
+            binding.loadingProgress.visibility = View.GONE
+            binding.typewriter.visibility = View.VISIBLE
         }
     }
 
@@ -302,14 +356,10 @@ class EditorActivity : AppCompatActivity() {
             }
 
             R.id.action_statistics -> {
-                // Get the word and page counts
                 val wordCount = getWordCount()
                 val pageCount = getPageCount()
-
-                // Build the message string
                 val message = "Word Count: $wordCount\nPage Count: $pageCount"
 
-                // Create and show the AlertDialog
                 AlertDialog.Builder(this)
                     .setTitle("Statistics:")
                     .setMessage(message)
@@ -317,14 +367,11 @@ class EditorActivity : AppCompatActivity() {
                         dialog.dismiss()
                     }
                     .show()
-
                 true
             }
 
             R.id.action_find_replace -> {
-                // ** MODIFICATION START **
                 showFindReplaceDialog()
-                // ** MODIFICATION END **
                 true
             }
 
@@ -332,7 +379,6 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
-    // ** NEW METHOD START **
     private fun showFindReplaceDialog() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_find_replace, null)
         val findEditText = dialogView.findViewById<EditText>(R.id.et_find)
@@ -363,7 +409,6 @@ class EditorActivity : AppCompatActivity() {
 
         dialog.show()
 
-        // We override some button listeners to prevent the dialog from closing on click.
         val findButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
         val replaceButton = dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
 
@@ -373,7 +418,6 @@ class EditorActivity : AppCompatActivity() {
 
             if (findText.isEmpty()) return@setOnClickListener
 
-            // If we've searched to the end, wrap around
             if (lastFoundIndex >= content.length) {
                 lastFoundIndex = 0
                 Toast.makeText(this, "Searching from top...", Toast.LENGTH_SHORT).show()
@@ -384,10 +428,10 @@ class EditorActivity : AppCompatActivity() {
             if (startIndex != -1) {
                 mainEditText.requestFocus()
                 mainEditText.setSelection(startIndex, startIndex + findText.length)
-                lastFoundIndex = startIndex + 1 // Prepare for next search
+                lastFoundIndex = startIndex + 1
             } else {
                 Toast.makeText(this, "Text not found.", Toast.LENGTH_SHORT).show()
-                lastFoundIndex = 0 // Reset for next time
+                lastFoundIndex = 0
             }
         }
 
@@ -402,23 +446,18 @@ class EditorActivity : AppCompatActivity() {
                 val selectionEnd = mainEditText.selectionEnd
                 val selectedText = mainEditText.text.subSequence(selectionStart, selectionEnd).toString()
 
-                // Check if the current selection matches the text to find
                 if (selectedText.equals(findText, ignoreCase = true)) {
                     mainEditText.text.replace(selectionStart, selectionEnd, replaceText)
-                    // Automatically find the next occurrence
                     lastFoundIndex = selectionStart + replaceText.length
                     findButton.performClick()
                 } else {
-                    // Selection doesn't match, just find the next occurrence
                     findButton.performClick()
                 }
             } else {
-                // Nothing is selected, just find the first occurrence
                 findButton.performClick()
             }
         }
     }
-    // ** NEW METHOD END **
 
     override fun onPause() {
         super.onPause()
@@ -436,10 +475,9 @@ class EditorActivity : AppCompatActivity() {
         val textHeightInPixels = layout.height
         val ydpi = resources.displayMetrics.ydpi
         if (ydpi <= 0) return 1
-        // Assuming a standard page height of ~7 inches for calculation
         val heightInInches = textHeightInPixels / ydpi
         val pageCount = floor(heightInInches / 7.0).toInt() + 1
-        return pageCount.coerceAtLeast(1) // Ensure at least 1 page
+        return pageCount.coerceAtLeast(1)
     }
 
     companion object {
@@ -483,6 +521,11 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        binding.bottomAppBar.setNavigationOnClickListener {
+            val intent = Intent(this, AboutActivity::class.java)
+            startActivity(intent)
+        }
 
         binding.bottomAppBar.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
@@ -627,7 +670,7 @@ class MainActivity : AppCompatActivity() {
 }
 
 ShareActivity.kt:
-// ShareActivity.kt - Enhanced with font support
+// ShareActivity.kt
 package com.gnimble.typewriter
 
 import android.graphics.Bitmap
@@ -636,6 +679,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.gnimble.typewriter.data.AppDatabase
 import com.gnimble.typewriter.data.ContentFormat
 import com.gnimble.typewriter.databinding.ActivityShareBinding
 import com.google.zxing.BarcodeFormat
@@ -655,6 +699,9 @@ class ShareActivity : AppCompatActivity() {
     private lateinit var binding: ActivityShareBinding
     private var webServer: BookWebServer? = null
     private val PORT = 8888
+
+    // Initialize Database
+    private val database by lazy { AppDatabase.getDatabase(this) }
 
     // Font mapping between local resources and Google Fonts
     companion object {
@@ -682,21 +729,41 @@ class ShareActivity : AppCompatActivity() {
         binding = ActivityShareBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Get book data from intent - including formatted content
-        val bookTitle = intent.getStringExtra("book_title") ?: "Unknown Title"
-        val bookSubtitle = intent.getStringExtra("book_subtitle") ?: ""
-        val bookContent = intent.getStringExtra("book_content") ?: ""
-        val formattedContent = intent.getStringExtra("book_formatted_content")
-        val contentFormat = intent.getStringExtra("book_content_format")?.let {
-            ContentFormat.valueOf(it)
-        } ?: ContentFormat.PLAIN_TEXT
-        val bookFontName = intent.getStringExtra("book_font_name") ?: "default"
+        // CHANGED: Get only the ID from the intent
+        val bookId = intent.getLongExtra("book_id", -1)
 
-        startWebServer(bookTitle, bookSubtitle, bookContent, formattedContent, contentFormat, bookFontName)
+        if (bookId == -1L) {
+            Toast.makeText(this, "Error: No book ID provided", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        // CHANGED: Load the heavy data from the database asynchronously
+        loadBookAndStartServer(bookId)
 
         binding.stopServerButton.setOnClickListener {
             stopWebServer()
             finish()
+        }
+    }
+
+    private fun loadBookAndStartServer(bookId: Long) {
+        lifecycleScope.launch {
+            val book = database.bookDao().getBook(bookId)
+
+            if (book != null) {
+                startWebServer(
+                    book.title,
+                    book.subtitle,
+                    book.storyContent,
+                    book.formattedContent,
+                    book.contentFormat,
+                    book.fontName
+                )
+            } else {
+                Toast.makeText(this@ShareActivity, "Book not found in database", Toast.LENGTH_SHORT).show()
+                finish()
+            }
         }
     }
 
@@ -776,6 +843,11 @@ class ShareActivity : AppCompatActivity() {
                 else -> convertPlainTextToHtml(content)
             }
 
+            // 3. Generate CSS for embedded font styles (if any exist in the content)
+            val usedFonts = extractUsedFonts(bodyContent)
+            val dynamicFontStyles = generateFontStyles(usedFonts)
+            val dynamicFontLinks = generateFontLinks(usedFonts)
+
             return """
             <!DOCTYPE html>
             <html lang="en">
@@ -784,6 +856,7 @@ class ShareActivity : AppCompatActivity() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>$title</title>
                 $googleFontUrl
+                $dynamicFontLinks
                 <style>
                     body {
                         font-family: $cssFontFamily;
@@ -848,13 +921,9 @@ class ShareActivity : AppCompatActivity() {
                         text-align: justify !important;
                         text-indent: 0 !important;
                     }
-                    .metadata {
-                        background-color: #ecf0f1;
-                        padding: 15px;
-                        border-radius: 5px;
-                        margin-bottom: 20px;
-                        font-size: 0.9em;
-                    }
+                    /* Dynamic Font Styles */
+                    $dynamicFontStyles
+                    
                     .footer {
                         margin-top: 40px;
                         padding-top: 20px;
@@ -886,17 +955,13 @@ class ShareActivity : AppCompatActivity() {
         private fun extractUsedFonts(html: String): Set<String> {
             val usedFonts = mutableSetOf<String>()
 
-            Log.d("BookWebServer", "Extracting fonts from HTML: ${html.take(200)}...")
-
             // Extract font resource IDs from the HTML
             val fontPattern = Regex("""data-font-resource-id="(\d+)"""")
             fontPattern.findAll(html).forEach { match ->
                 val resourceId = match.groupValues[1].toIntOrNull()
-                Log.d("BookWebServer", "Found font resource ID: $resourceId")
                 if (resourceId != null) {
                     // Find the corresponding font name from resource ID
                     val fontFieldName = getFontFieldNameFromResourceId(resourceId)
-                    Log.d("BookWebServer", "Font field name for ID $resourceId: $fontFieldName")
                     if (fontFieldName != null) {
                         usedFonts.add(fontFieldName)
                     }
@@ -907,15 +972,12 @@ class ShareActivity : AppCompatActivity() {
             val fontNamePattern = Regex("""data-font-name="([^"]+)"""")
             fontNamePattern.findAll(html).forEach { match ->
                 val fontName = match.groupValues[1]
-                Log.d("BookWebServer", "Found font name: $fontName")
                 // Convert display name back to field name
                 val fieldName = fontName.lowercase().replace(" ", "_")
                 if (FONT_MAPPINGS.containsKey(fieldName)) {
                     usedFonts.add(fieldName)
                 }
             }
-
-            Log.d("BookWebServer", "Total fonts found: ${usedFonts.size} - $usedFonts")
 
             return usedFonts
         }
@@ -952,8 +1014,6 @@ class ShareActivity : AppCompatActivity() {
         private fun generateFontStyles(usedFonts: Set<String>): String {
             val styles = mutableListOf<String>()
 
-            Log.d("BookWebServer", "Generating font styles for: $usedFonts")
-
             // Always include a default font style
             styles.add("""
                 .content span {
@@ -974,8 +1034,6 @@ class ShareActivity : AppCompatActivity() {
                             $fontStyle
                         }
                     """.trimIndent())
-
-                    Log.d("BookWebServer", "Generated style for $className with family '${mapping.familyName}'")
                 }
             }
 
@@ -994,10 +1052,7 @@ class ShareActivity : AppCompatActivity() {
                 }
             }
 
-            val finalStyles = styles.joinToString("\n")
-            Log.d("BookWebServer", "Generated CSS:\n$finalStyles")
-
-            return finalStyles
+            return styles.joinToString("\n")
         }
 
         private fun convertPlainTextToHtml(text: String): String {
@@ -1055,9 +1110,6 @@ class ShareActivity : AppCompatActivity() {
                 .replace(Regex("""<p\s+class="indented-paragraph">"""), """<p class="indented-paragraph">""")
                 .trim()
 
-            // Debug log to see what we're actually serving
-            Log.d("BookWebServer", "Processed HTML: $processed")
-
             return processed
         }
 
@@ -1095,7 +1147,7 @@ class ShareActivity : AppCompatActivity() {
                 val afterAttr = match.groupValues[3]
 
                 // Clean up the other attributes - remove the data-font-resource-id if present
-                var cleanedAttrs = (beforeAttr + afterAttr)
+                val cleanedAttrs = (beforeAttr + afterAttr)
                     .replace(Regex("""data-font-resource-id="\d+""""), "")
                     .trim()
 
@@ -1213,18 +1265,6 @@ class ShareActivity : AppCompatActivity() {
         super.onDestroy()
         stopWebServer()
     }
-}
-
-// Extension function to safely read bytes from InputStream
-fun java.io.InputStream.readBytes(): ByteArray {
-    val buffer = ByteArrayOutputStream()
-    val data = ByteArray(16384)
-    var nRead: Int
-    while (this.read(data, 0, data.size).also { nRead = it } != -1) {
-        buffer.write(data, 0, nRead)
-    }
-    buffer.flush()
-    return buffer.toByteArray()
 }
 
 TypewriterView.kt:
@@ -2668,11 +2708,6 @@ class BookAdapter(
                 val context = binding.root.context
                 val intent = Intent(context, ShareActivity::class.java).apply {
                     putExtra("book_id", book.id)
-                    putExtra("book_title", book.title)
-                    putExtra("book_subtitle", book.subtitle)
-                    putExtra("book_content", book.storyContent)
-                    putExtra("book_formatted_content", book.formattedContent)
-                    putExtra("book_font_name", book.fontName) // ** NEW **
                 }
                 context.startActivity(intent)
             }

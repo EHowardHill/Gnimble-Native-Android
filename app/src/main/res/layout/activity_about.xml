@@ -44,6 +44,15 @@
             android:textColor="?attr/colorOnSurface"
             android:gravity="center" />
 
+        <TextView
+            android:id="@+id/about_text_3"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/gnimble_typewriter_subsubtext"
+            android:textAppearance="@style/TextAppearance.MaterialComponents.Caption"
+            android:textColor="?attr/colorOnSurface"
+            android:gravity="center" />
+
         <Button
             android:id="@+id/btn_close"
             android:layout_width="wrap_content"

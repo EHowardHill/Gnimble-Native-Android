@@ -1,4 +1,4 @@
-// ShareActivity.kt - Enhanced with font support
+// ShareActivity.kt
 package com.gnimble.typewriter
 
 import android.graphics.Bitmap
@@ -7,6 +7,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.gnimble.typewriter.data.AppDatabase
 import com.gnimble.typewriter.data.ContentFormat
 import com.gnimble.typewriter.databinding.ActivityShareBinding
 import com.google.zxing.BarcodeFormat
@@ -26,6 +27,9 @@ class ShareActivity : AppCompatActivity() {
     private lateinit var binding: ActivityShareBinding
     private var webServer: BookWebServer? = null
     private val PORT = 8888
+
+    // Initialize Database
+    private val database by lazy { AppDatabase.getDatabase(this) }
 
     // Font mapping between local resources and Google Fonts
     companion object {
@@ -53,21 +57,41 @@ class ShareActivity : AppCompatActivity() {
         binding = ActivityShareBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Get book data from intent - including formatted content
-        val bookTitle = intent.getStringExtra("book_title") ?: "Unknown Title"
-        val bookSubtitle = intent.getStringExtra("book_subtitle") ?: ""
-        val bookContent = intent.getStringExtra("book_content") ?: ""
-        val formattedContent = intent.getStringExtra("book_formatted_content")
-        val contentFormat = intent.getStringExtra("book_content_format")?.let {
-            ContentFormat.valueOf(it)
-        } ?: ContentFormat.PLAIN_TEXT
-        val bookFontName = intent.getStringExtra("book_font_name") ?: "default"
+        // CHANGED: Get only the ID from the intent
+        val bookId = intent.getLongExtra("book_id", -1)
 
-        startWebServer(bookTitle, bookSubtitle, bookContent, formattedContent, contentFormat, bookFontName)
+        if (bookId == -1L) {
+            Toast.makeText(this, "Error: No book ID provided", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        // CHANGED: Load the heavy data from the database asynchronously
+        loadBookAndStartServer(bookId)
 
         binding.stopServerButton.setOnClickListener {
             stopWebServer()
             finish()
+        }
+    }
+
+    private fun loadBookAndStartServer(bookId: Long) {
+        lifecycleScope.launch {
+            val book = database.bookDao().getBook(bookId)
+
+            if (book != null) {
+                startWebServer(
+                    book.title,
+                    book.subtitle,
+                    book.storyContent,
+                    book.formattedContent,
+                    book.contentFormat,
+                    book.fontName
+                )
+            } else {
+                Toast.makeText(this@ShareActivity, "Book not found in database", Toast.LENGTH_SHORT).show()
+                finish()
+            }
         }
     }
 
@@ -147,6 +171,11 @@ class ShareActivity : AppCompatActivity() {
                 else -> convertPlainTextToHtml(content)
             }
 
+            // 3. Generate CSS for embedded font styles (if any exist in the content)
+            val usedFonts = extractUsedFonts(bodyContent)
+            val dynamicFontStyles = generateFontStyles(usedFonts)
+            val dynamicFontLinks = generateFontLinks(usedFonts)
+
             return """
             <!DOCTYPE html>
             <html lang="en">
@@ -155,6 +184,7 @@ class ShareActivity : AppCompatActivity() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>$title</title>
                 $googleFontUrl
+                $dynamicFontLinks
                 <style>
                     body {
                         font-family: $cssFontFamily;
@@ -219,13 +249,9 @@ class ShareActivity : AppCompatActivity() {
                         text-align: justify !important;
                         text-indent: 0 !important;
                     }
-                    .metadata {
-                        background-color: #ecf0f1;
-                        padding: 15px;
-                        border-radius: 5px;
-                        margin-bottom: 20px;
-                        font-size: 0.9em;
-                    }
+                    /* Dynamic Font Styles */
+                    $dynamicFontStyles
+                    
                     .footer {
                         margin-top: 40px;
                         padding-top: 20px;
@@ -257,17 +283,13 @@ class ShareActivity : AppCompatActivity() {
         private fun extractUsedFonts(html: String): Set<String> {
             val usedFonts = mutableSetOf<String>()
 
-            Log.d("BookWebServer", "Extracting fonts from HTML: ${html.take(200)}...")
-
             // Extract font resource IDs from the HTML
             val fontPattern = Regex("""data-font-resource-id="(\d+)"""")
             fontPattern.findAll(html).forEach { match ->
                 val resourceId = match.groupValues[1].toIntOrNull()
-                Log.d("BookWebServer", "Found font resource ID: $resourceId")
                 if (resourceId != null) {
                     // Find the corresponding font name from resource ID
                     val fontFieldName = getFontFieldNameFromResourceId(resourceId)
-                    Log.d("BookWebServer", "Font field name for ID $resourceId: $fontFieldName")
                     if (fontFieldName != null) {
                         usedFonts.add(fontFieldName)
                     }
@@ -278,15 +300,12 @@ class ShareActivity : AppCompatActivity() {
             val fontNamePattern = Regex("""data-font-name="([^"]+)"""")
             fontNamePattern.findAll(html).forEach { match ->
                 val fontName = match.groupValues[1]
-                Log.d("BookWebServer", "Found font name: $fontName")
                 // Convert display name back to field name
                 val fieldName = fontName.lowercase().replace(" ", "_")
                 if (FONT_MAPPINGS.containsKey(fieldName)) {
                     usedFonts.add(fieldName)
                 }
             }
-
-            Log.d("BookWebServer", "Total fonts found: ${usedFonts.size} - $usedFonts")
 
             return usedFonts
         }
@@ -323,8 +342,6 @@ class ShareActivity : AppCompatActivity() {
         private fun generateFontStyles(usedFonts: Set<String>): String {
             val styles = mutableListOf<String>()
 
-            Log.d("BookWebServer", "Generating font styles for: $usedFonts")
-
             // Always include a default font style
             styles.add("""
                 .content span {
@@ -345,8 +362,6 @@ class ShareActivity : AppCompatActivity() {
                             $fontStyle
                         }
                     """.trimIndent())
-
-                    Log.d("BookWebServer", "Generated style for $className with family '${mapping.familyName}'")
                 }
             }
 
@@ -365,10 +380,7 @@ class ShareActivity : AppCompatActivity() {
                 }
             }
 
-            val finalStyles = styles.joinToString("\n")
-            Log.d("BookWebServer", "Generated CSS:\n$finalStyles")
-
-            return finalStyles
+            return styles.joinToString("\n")
         }
 
         private fun convertPlainTextToHtml(text: String): String {
@@ -426,9 +438,6 @@ class ShareActivity : AppCompatActivity() {
                 .replace(Regex("""<p\s+class="indented-paragraph">"""), """<p class="indented-paragraph">""")
                 .trim()
 
-            // Debug log to see what we're actually serving
-            Log.d("BookWebServer", "Processed HTML: $processed")
-
             return processed
         }
 
@@ -466,7 +475,7 @@ class ShareActivity : AppCompatActivity() {
                 val afterAttr = match.groupValues[3]
 
                 // Clean up the other attributes - remove the data-font-resource-id if present
-                var cleanedAttrs = (beforeAttr + afterAttr)
+                val cleanedAttrs = (beforeAttr + afterAttr)
                     .replace(Regex("""data-font-resource-id="\d+""""), "")
                     .trim()
 
@@ -584,16 +593,4 @@ class ShareActivity : AppCompatActivity() {
         super.onDestroy()
         stopWebServer()
     }
-}
-
-// Extension function to safely read bytes from InputStream
-fun java.io.InputStream.readBytes(): ByteArray {
-    val buffer = ByteArrayOutputStream()
-    val data = ByteArray(16384)
-    var nRead: Int
-    while (this.read(data, 0, data.size).also { nRead = it } != -1) {
-        buffer.write(data, 0, nRead)
-    }
-    buffer.flush()
-    return buffer.toByteArray()
 }
