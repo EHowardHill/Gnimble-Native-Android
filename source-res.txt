@@ -198,6 +198,42 @@ activity_editor.xml:
 
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/pagination_controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="8dp"
+        android:background="?attr/colorSurface"
+        android:elevation="8dp">
+
+        <ImageButton
+            android:id="@+id/btn_prev_page"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/arrow_back_24px"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Previous Page"/>
+
+        <TextView
+            android:id="@+id/text_page_indicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:text="Section 1 / 1"
+            android:textAppearance="@style/TextAppearance.MaterialComponents.Body2"/>
+
+        <ImageButton
+            android:id="@+id/btn_next_page"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/arrow_forward_24px"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Next Page"/>
+
+    </LinearLayout>
+
     <ProgressBar
         android:id="@+id/loading_progress"
         android:layout_width="wrap_content"

@@ -30,5 +30,5 @@ def process(path, name):
     with open("source-" + name + ".txt", "w", encoding="utf-8") as f:
         f.write(final.strip())
 
-process(r"C:\Users\ethan\Documents\GitHub\Gnimble-Native-Android\app\src\main\java\com\gnimble\typewriter", "typewriter")
-process(r"C:\Users\ethan\Documents\GitHub\Gnimble-Native-Android\app\src\main\res\layout", "res")
+process(r"C:\Users\ethan\OneDrive\Documents\GitHub\Gnimble-Native-Android\app\src\main\java\com\gnimble\typewriter", "typewriter")
+process(r"C:\Users\ethan\OneDrive\Documents\GitHub\Gnimble-Native-Android\app\src\main\res\layout", "res")
