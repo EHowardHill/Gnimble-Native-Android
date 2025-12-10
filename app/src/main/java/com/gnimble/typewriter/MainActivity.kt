@@ -1,4 +1,3 @@
-// MainActivity.kt
 package com.gnimble.typewriter
 
 import android.content.Intent
@@ -28,32 +27,13 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.bottomAppBar.setNavigationOnClickListener {
-            val intent = Intent(this, AboutActivity::class.java)
-            startActivity(intent)
-        }
-
-        binding.bottomAppBar.setOnMenuItemClickListener { menuItem ->
-            when (menuItem.itemId) {
-                R.id.action_upload -> {
-                    // Handle upload action
-                    val intent = Intent(this, UploadActivity::class.java)
-                    startActivity(intent)
-                    true
-                }
-                R.id.action_settings -> {
-                    // Handle settings action
-                    val intent = Intent(Settings.ACTION_SETTINGS)
-                    startActivity(intent)
-                    true
-                }
-                else -> false
-            }
-        }
+        // Previous BottomAppBar logic removed as the view was removed from XML.
+        // The navigation listener for AboutActivity is currently disconnected
+        // because the navigation icon is gone.
 
         setupRecyclerView()
         observeBooks()
-        setupFab()
+        setupFabs() // Renamed to plural as we now handle 3 buttons
     }
 
     private fun setupRecyclerView() {
@@ -90,9 +70,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupFab() {
+    private fun setupFabs() {
+        // 1. Upload Button (Left)
+        binding.fabUpload.setOnClickListener {
+            val intent = Intent(this, UploadActivity::class.java)
+            startActivity(intent)
+        }
+
+        // 2. Add Book Button (Center)
         binding.fabAddBook.setOnClickListener {
             showNewBookDialog()
+        }
+
+        // 3. Settings Button (Right)
+        binding.fabSettings.setOnClickListener {
+            // Note: This opens Android System settings.
+            // If you create a specific SettingsActivity later, change this class reference.
+            val intent = Intent(Settings.ACTION_SETTINGS)
+            startActivity(intent)
+        }
+
+        // 4. About page
+        binding.mainLogo.setOnClickListener {
+            val intent = Intent(this, AboutActivity::class.java)
+            startActivity(intent)
         }
     }
 

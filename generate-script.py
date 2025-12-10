@@ -6,7 +6,7 @@ def process(path, name):
 
     # os.walk yields a 3-tuple: (current_folder, list_of_subfolders, list_of_files)
     for root, dirs, files in os.walk(path):
-        for file in files:
+        for file in [f for f in files if ".xml" in f]:
             
             # 1. Logic to skip specific files
             if file in [".DS_Store"]:
@@ -31,4 +31,4 @@ def process(path, name):
         f.write(final.strip())
 
 process(r"C:\Users\ethan\Documents\GitHub\Gnimble-Native-Android\app\src\main\java\com\gnimble\typewriter", "typewriter")
-process(r"C:\Users\ethan\Documents\GitHub\Gnimble-Native-Android\app\src\main\res\layout", "res")
+process(r"C:\Users\ethan\Documents\GitHub\Gnimble-Native-Android\app\src\main\res", "res")

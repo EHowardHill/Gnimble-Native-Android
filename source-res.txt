@@ -1,4 +1,522 @@
-activity_about.xml:
+drawable\add_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M440,520L200,520L200,440L440,440L440,200L520,200L520,440L760,440L760,520L520,520L520,760L440,760L440,520Z"/>
+</vector>
+
+
+drawable\arrow_back_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal"
+    android:autoMirrored="true">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M313,520L537,744L480,800L160,480L480,160L537,216L313,440L800,440L800,520L313,520Z"/>
+</vector>
+
+
+drawable\arrow_forward_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal"
+    android:autoMirrored="true">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M647,520L160,520L160,440L647,440L423,216L480,160L800,480L480,800L423,744L647,520Z"/>
+</vector>
+
+
+drawable\bar_chart_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M640,800L640,520L800,520L800,800L640,800ZM400,800L400,160L560,160L560,800L400,800ZM160,800L160,360L320,360L320,800L160,800Z"/>
+</vector>
+
+
+drawable\delete_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M280,840Q247,840 223.5,816.5Q200,793 200,760L200,240L160,240L160,160L360,160L360,120L600,120L600,160L800,160L800,240L760,240L760,760Q760,793 736.5,816.5Q713,840 680,840L280,840ZM680,240L280,240L280,760Q280,760 280,760Q280,760 280,760L680,760Q680,760 680,760Q680,760 680,760L680,240ZM360,680L440,680L440,320L360,320L360,680ZM520,680L600,680L600,320L520,320L520,680ZM280,240L280,240L280,760Q280,760 280,760Q280,760 280,760L280,760Q280,760 280,760Q280,760 280,760L280,240Z"/>
+</vector>
+
+
+drawable\edit_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M200,760L257,760L648,369L591,312L200,703L200,760ZM120,840L120,670L648,143Q660,132 674.5,126Q689,120 705,120Q721,120 736,126Q751,132 762,144L817,200Q829,211 834.5,226Q840,241 840,256Q840,272 834.5,286.5Q829,301 817,313L290,840L120,840ZM760,256L760,256L704,200L704,200L760,256ZM619,341L591,312L591,312L648,369L648,369L619,341Z"/>
+</vector>
+
+
+drawable\find_in_page_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M590,800L670,880L240,880Q207,880 183.5,856.5Q160,833 160,800L160,160Q160,127 183.5,103.5Q207,80 240,80L600,80L800,320L800,800Q800,820 791.5,836.5Q783,853 768,864L560,658Q543,669 523,674.5Q503,680 480,680Q414,680 367,633Q320,586 320,520Q320,454 367,407Q414,360 480,360Q546,360 593,407Q640,454 640,520Q640,543 634.5,563Q629,583 618,600L720,704L720,348L562,160L240,160Q240,160 240,160Q240,160 240,160L240,800Q240,800 240,800Q240,800 240,800L590,800ZM480,600Q513,600 536.5,576.5Q560,553 560,520Q560,487 536.5,463.5Q513,440 480,440Q447,440 423.5,463.5Q400,487 400,520Q400,553 423.5,576.5Q447,600 480,600ZM480,520L480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520L480,520Q480,520 480,520Q480,520 480,520ZM480,520L480,520Q480,520 480,520Q480,520 480,520L480,520Q480,520 480,520Q480,520 480,520L480,520L480,520L480,520L480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520Q480,520 480,520L480,520Q480,520 480,520Q480,520 480,520Z"/>
+</vector>
+
+
+drawable\find_replace_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M164,400Q178,297 255.5,228.5Q333,160 440,160Q499,160 550.5,182.5Q602,205 640,244L640,160L720,160L720,400L480,400L480,320L600,320Q571,284 530.5,262Q490,240 440,240Q368,240 313,285.5Q258,331 244,400L164,400ZM784,840L608,664Q572,691 529.5,705.5Q487,720 440,720Q381,720 329.5,697.5Q278,675 240,636L240,720L160,720L160,480L400,480L400,560L280,560Q309,596 349.5,618Q390,640 440,640Q512,640 567,594.5Q622,549 636,480L716,480Q711,516 698,547.5Q685,579 664,608L840,784L784,840Z"/>
+</vector>
+
+
+drawable\format_align_center_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M120,840L120,760L840,760L840,840L120,840ZM280,680L280,600L680,600L680,680L280,680ZM120,520L120,440L840,440L840,520L120,520ZM280,360L280,280L680,280L680,360L280,360ZM120,200L120,120L840,120L840,200L120,200Z"/>
+</vector>
+
+
+drawable\format_align_justify_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M120,840L120,760L840,760L840,840L120,840ZM120,680L120,600L840,600L840,680L120,680ZM120,520L120,440L840,440L840,520L120,520ZM120,360L120,280L840,280L840,360L120,360ZM120,200L120,120L840,120L840,200L120,200Z"/>
+</vector>
+
+
+drawable\format_align_left_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal"
+    android:autoMirrored="true">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M120,840L120,760L840,760L840,840L120,840ZM120,680L120,600L600,600L600,680L120,680ZM120,520L120,440L840,440L840,520L120,520ZM120,360L120,280L600,280L600,360L120,360ZM120,200L120,120L840,120L840,200L120,200Z"/>
+</vector>
+
+
+drawable\format_align_right_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal"
+    android:autoMirrored="true">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M120,200L120,120L840,120L840,200L120,200ZM360,360L360,280L840,280L840,360L360,360ZM120,520L120,440L840,440L840,520L120,520ZM360,680L360,600L840,600L840,680L360,680ZM120,840L120,760L840,760L840,840L120,840Z"/>
+</vector>
+
+
+drawable\format_underlined_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M200,840L200,760L760,760L760,840L200,840ZM480,680Q379,680 323,617Q267,554 267,450L267,120L370,120L370,456Q370,512 398,547Q426,582 480,582Q534,582 562,547Q590,512 590,456L590,120L693,120L693,450Q693,554 637,617Q581,680 480,680Z"/>
+</vector>
+
+
+drawable\gallery_thumbnail_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M120,760Q87,760 63.5,736.5Q40,713 40,680L40,280Q40,247 63.5,223.5Q87,200 120,200L520,200Q553,200 576.5,223.5Q600,247 600,280L600,680Q600,713 576.5,736.5Q553,760 520,760L120,760ZM720,440Q703,440 691.5,428.5Q680,417 680,400L680,240Q680,223 691.5,211.5Q703,200 720,200L880,200Q897,200 908.5,211.5Q920,223 920,240L920,400Q920,417 908.5,428.5Q897,440 880,440L720,440ZM760,360L840,360L840,280L760,280L760,360ZM120,680L520,680Q520,680 520,680Q520,680 520,680L520,280Q520,280 520,280Q520,280 520,280L120,280Q120,280 120,280Q120,280 120,280L120,680Q120,680 120,680Q120,680 120,680ZM160,600L480,600L375,460L300,560L245,487L160,600ZM720,760Q703,760 691.5,748.5Q680,737 680,720L680,560Q680,543 691.5,531.5Q703,520 720,520L880,520Q897,520 908.5,531.5Q920,543 920,560L920,720Q920,737 908.5,748.5Q897,760 880,760L720,760ZM760,680L840,680L840,600L760,600L760,680ZM120,680Q120,680 120,680Q120,680 120,680L120,280Q120,280 120,280Q120,280 120,280L120,280Q120,280 120,280Q120,280 120,280L120,680Q120,680 120,680Q120,680 120,680ZM760,360L760,280L760,280L760,360ZM760,680L760,600L760,600L760,680Z"/>
+</vector>
+
+
+drawable\icon.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="210dp"
+    android:height="297dp"
+    android:viewportWidth="210"
+    android:viewportHeight="297">
+  <path
+      android:pathData="m118.9,200.54c-0.37,-0.95 -0.06,-4.24 0.67,-7.3 2.13,-8.86 -1.36,-21.56 -7.82,-28.49 -3.34,-3.58 -4.92,-3.28 -4.92,0.95 0,1.59 -1.11,5.07 -2.47,7.73 -2.32,4.54 -2.57,4.7 -4.08,2.64 -0.88,-1.21 -1.61,-2.74 -1.61,-3.4 0,-1.71 -2.99,2.79 -6.49,9.75 -2.29,4.57 -2.92,7.38 -2.67,12.03 0.29,5.38 0.05,6.11 -2.08,6.42 -2.87,0.42 -8.75,-4.28 -13.39,-10.67 -4.84,-6.68 -4.73,-16.51 0.3,-26.64 7.48,-15.08 8.37,-16.01 10.35,-10.81 1.49,3.93 2.58,3.18 7.28,-4.98 3.93,-6.83 5.94,-11.96 7.29,-18.58 0.45,-2.23 1.48,-3.79 2.5,-3.79 2.67,0 13.66,11.64 16.2,17.15 2.4,5.21 4.35,5.87 4.97,1.69 0.46,-3.16 1.87,-3.2 4.91,-0.16 4.98,4.98 10.1,14.68 11.46,21.67 2.41,12.46 -1.3,22.13 -12.13,31.67 -6,5.28 -7.24,5.75 -8.25,3.12z"
+      android:fillColor="#f9f9f9"/>
+</vector>
+
+
+drawable\ic_format_bold.xml:
+<!-- res/drawable/ic_format_bold.xml -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24.0"
+    android:viewportHeight="24.0"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M15.6,10.79c0.97,-0.67 1.65,-1.77 1.65,-2.79 0,-2.26 -1.75,-4 -4.25,-4H7v14h7.04c2.1,0 3.71,-1.7 3.71,-3.79 0,-1.52 -0.87,-2.82 -2.15,-3.42zM10,6.5h3c0.83,0 1.5,0.67 1.5,1.5s-0.67,1.5 -1.5,1.5h-3V6.5zM10,15.5v-3h4c0.83,0 1.5,0.67 1.5,1.5s-0.67,1.5 -1.5,1.5H10z"/>
+</vector>
+
+drawable\ic_format_italic.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24.0"
+    android:viewportHeight="24.0"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M10,4v3h2.21l-3.42,8H6v3h8v-3h-2.21l3.42,-8H18V4z"/>
+</vector>
+
+
+drawable\ic_launcher_background.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#3DDC84"
+        android:pathData="M0,0h108v108h-108z" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M9,0L9,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,0L19,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M29,0L29,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M39,0L39,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M49,0L49,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M59,0L59,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M69,0L69,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M79,0L79,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M89,0L89,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M99,0L99,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,9L108,9"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,19L108,19"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,29L108,29"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,39L108,39"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,49L108,49"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,59L108,59"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,69L108,69"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,79L108,79"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,89L108,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,99L108,99"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,29L89,29"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,39L89,39"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,49L89,49"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,59L89,59"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,69L89,69"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,79L89,79"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M29,19L29,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M39,19L39,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M49,19L49,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M59,19L59,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M69,19L69,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M79,19L79,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+</vector>
+
+
+drawable\ic_launcher_foreground.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="210"
+    android:viewportHeight="297">
+  <group android:scaleX="1.1808081"
+      android:scaleY="1.67"
+      android:translateX="-18.984848"
+      android:translateY="-99.495">
+    <path
+        android:pathData="m118.9,200.54c-0.37,-0.95 -0.06,-4.24 0.67,-7.3 2.13,-8.86 -1.36,-21.56 -7.82,-28.49 -3.34,-3.58 -4.92,-3.28 -4.92,0.95 0,1.59 -1.11,5.07 -2.47,7.73 -2.32,4.54 -2.57,4.7 -4.08,2.64 -0.88,-1.21 -1.61,-2.74 -1.61,-3.4 0,-1.71 -2.99,2.79 -6.49,9.75 -2.29,4.57 -2.92,7.38 -2.67,12.03 0.29,5.38 0.05,6.11 -2.08,6.42 -2.87,0.42 -8.75,-4.28 -13.39,-10.67 -4.84,-6.68 -4.73,-16.51 0.3,-26.64 7.48,-15.08 8.37,-16.01 10.35,-10.81 1.49,3.93 2.58,3.18 7.28,-4.98 3.93,-6.83 5.94,-11.96 7.29,-18.58 0.45,-2.23 1.48,-3.79 2.5,-3.79 2.67,0 13.66,11.64 16.2,17.15 2.4,5.21 4.35,5.87 4.97,1.69 0.46,-3.16 1.87,-3.2 4.91,-0.16 4.98,4.98 10.1,14.68 11.46,21.67 2.41,12.46 -1.3,22.13 -12.13,31.67 -6,5.28 -7.24,5.75 -8.25,3.12z"
+        android:fillColor="#f9f9f9"/>
+  </group>
+</vector>
+
+
+drawable\image_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M200,840Q167,840 143.5,816.5Q120,793 120,760L120,200Q120,167 143.5,143.5Q167,120 200,120L760,120Q793,120 816.5,143.5Q840,167 840,200L840,760Q840,793 816.5,816.5Q793,840 760,840L200,840ZM200,760L760,760Q760,760 760,760Q760,760 760,760L760,200Q760,200 760,200Q760,200 760,200L200,200Q200,200 200,200Q200,200 200,200L200,760Q200,760 200,760Q200,760 200,760ZM240,680L720,680L570,480L450,640L360,520L240,680ZM200,760Q200,760 200,760Q200,760 200,760L200,200Q200,200 200,200Q200,200 200,200L200,200Q200,200 200,200Q200,200 200,200L200,760Q200,760 200,760Q200,760 200,760Z"/>
+</vector>
+
+
+drawable\ios_share_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M240,920Q207,920 183.5,896.5Q160,873 160,840L160,400Q160,367 183.5,343.5Q207,320 240,320L360,320L360,400L240,400Q240,400 240,400Q240,400 240,400L240,840Q240,840 240,840Q240,840 240,840L720,840Q720,840 720,840Q720,840 720,840L720,400Q720,400 720,400Q720,400 720,400L600,400L600,320L720,320Q753,320 776.5,343.5Q800,367 800,400L800,840Q800,873 776.5,896.5Q753,920 720,920L240,920ZM440,640L440,193L376,257L320,200L480,40L640,200L584,257L520,193L520,640L440,640Z"/>
+</vector>
+
+
+drawable\logo.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="210dp"
+    android:height="297dp"
+    android:viewportWidth="210"
+    android:viewportHeight="297"
+    android:tint="?attr/colorOnSurface">
+  <path
+      android:pathData="m132.06,162.32c0,-0.56 -0.14,-0.57 -6.53,-0.68 -2.61,-0.05 -3.52,-0.15 -3.52,-0.42 0,-0.2 0.26,-0.45 0.58,-0.55 1.33,-0.42 1.49,-1.2 1.38,-6.66 -0.11,-5.6 -0.31,-6.36 -2.06,-7.66 -1.03,-0.77 -3.43,-0.81 -4.55,-0.07 -1.52,1 -1.74,2.01 -1.63,7.62 0.12,5.94 0.28,6.42 2.4,6.95 1.41,0.35 1.8,0.71 1.32,1.19 -0.22,0.22 -1.14,0.22 -3.22,-0.01 -2.06,-0.22 -3.41,-0.23 -4.62,-0.01 -2.33,0.41 -2.78,-0.01 -1.3,-1.23l1.07,-0.88 -0,-5.07c-0,-2.79 -0.13,-5.55 -0.29,-6.13 -0.43,-1.54 -2.01,-2.82 -3.47,-2.82 -1.56,0 -2.98,0.72 -3.69,1.86 -0.52,0.85 -0.58,1.42 -0.58,5.98 0,4.82 0.03,5.08 0.65,5.78 0.36,0.4 1.16,0.91 1.79,1.12 0.65,0.22 1.19,0.6 1.24,0.88 0.09,0.45 -0.19,0.48 -3.37,0.29 -2.33,-0.14 -4.15,-0.09 -5.55,0.15 -1.54,0.26 -2.64,0.28 -4.23,0.06 -1.5,-0.21 -2.83,-0.21 -4.43,0.01 -1.65,0.22 -2.94,0.22 -4.6,-0.01 -1.6,-0.22 -2.92,-0.23 -4.3,-0.03 -1.45,0.21 -2.07,0.2 -2.3,-0.04 -0.22,-0.24 -0.2,-0.37 0.07,-0.47 0.21,-0.08 0.72,-0.44 1.15,-0.8 0.77,-0.66 0.77,-0.68 0.86,-5.22 0.08,-4.04 0.02,-4.74 -0.5,-6.14 -0.82,-2.18 -1.91,-3.17 -3.7,-3.35 -1.9,-0.18 -3.35,0.52 -4.09,1.97 -0.48,0.95 -0.56,1.7 -0.56,5.55 0,6.02 0.43,7.06 3.23,7.73 0.86,0.21 1.04,0.67 0.36,0.94 -0.24,0.09 -1.63,0.03 -3.09,-0.15 -1.89,-0.22 -3.22,-0.22 -4.62,-0 -2.4,0.37 -2.99,0.04 -1.53,-0.86 0.55,-0.34 1.07,-0.82 1.17,-1.06 0.09,-0.25 0.17,-3.19 0.17,-6.53 0,-6.8 -0.1,-7.19 -1.87,-7.52 -1.6,-0.3 -1.16,-0.85 1.23,-1.54 1.22,-0.35 2.79,-0.95 3.48,-1.34 0.69,-0.38 1.3,-0.7 1.36,-0.7 0.06,0 0.11,0.82 0.11,1.82 0,1 0.08,1.9 0.19,2 0.1,0.1 0.7,-0.28 1.32,-0.84 1.59,-1.44 2.72,-1.83 5.26,-1.83 2.53,0 3.84,0.49 4.85,1.83 1.1,1.46 1.37,2.92 1.56,8.54 0.2,6.03 0.29,6.3 2.42,6.87 1.02,0.27 1.21,0.24 1.75,-0.3 0.57,-0.57 0.61,-0.95 0.69,-6.65 0.1,-6.79 -0.02,-7.32 -1.71,-7.48 -0.5,-0.05 -0.97,-0.25 -1.03,-0.45 -0.12,-0.38 0.45,-0.66 2.51,-1.24 0.71,-0.2 1.97,-0.73 2.79,-1.18 0.83,-0.45 1.57,-0.82 1.65,-0.82 0.08,0 0.15,3.39 0.15,7.53 0,7.95 0.18,9.43 1.23,10.09 1.25,0.78 2.12,0.8 2.98,0.06l0.81,-0.69v-6.22c0,-6.19 -0,-6.22 -0.68,-6.77 -0.37,-0.3 -0.99,-0.55 -1.36,-0.55 -0.4,0 -0.69,-0.17 -0.69,-0.41 0,-0.26 0.87,-0.69 2.37,-1.17 1.3,-0.42 2.8,-1.01 3.32,-1.31 0.52,-0.3 1.07,-0.55 1.22,-0.55 0.15,0 0.27,0.84 0.27,1.87 0,1.03 0.09,1.87 0.21,1.87 0.11,0 0.79,-0.56 1.51,-1.25 1.89,-1.82 3.84,-2.31 6.39,-1.6 1.06,0.29 2.66,1.62 3.27,2.72 0.3,0.54 0.38,0.51 1.62,-0.62 2.06,-1.9 2.91,-2.24 5.53,-2.24 2.63,-0 3.87,0.53 4.95,2.13 1.11,1.64 1.32,2.86 1.44,8.41l0.12,5.38 0.86,0.72c0.47,0.4 1.17,0.72 1.54,0.72 0.37,0 0.78,0.16 0.9,0.36 0.5,0.81 0.62,-1.59 0.65,-13.07 0.03,-13.5 0.01,-13.66 -1.81,-14.26 -1.46,-0.48 -1.28,-1 0.47,-1.41 0.83,-0.19 2.24,-0.73 3.15,-1.2 2.72,-1.41 2.52,-1.98 2.52,7.39v8.24l1.22,-1.18c1.82,-1.76 2.7,-2.1 5.38,-2.1 2.56,0 3.81,0.45 5.29,1.91 1.54,1.52 2.04,3.07 2.02,6.27 -0.02,3.59 -0.7,5.49 -2.72,7.71 -2.01,2.2 -3.71,2.9 -7.03,2.9 -2.36,0 -2.76,-0.08 -4.45,-0.92l-1.86,-0.93 -1,1.15c-1.1,1.26 -1.44,1.41 -1.44,0.64zM143.77,160.98c1.1,-0.58 2.25,-1.86 2.77,-3.1 0.59,-1.42 0.58,-4.92 -0.03,-6.81 -0.53,-1.63 -2.27,-3.81 -3.59,-4.49 -1.1,-0.57 -3.37,-0.58 -4.46,-0.02 -1.65,0.85 -1.8,1.41 -1.8,6.56 0,5.41 0.18,5.94 2.49,7.41 1.52,0.96 3.31,1.14 4.62,0.45zM44.24,162.1c-4.88,-1.37 -8.04,-4.74 -9.4,-10.01 -0.66,-2.59 -0.39,-7.71 0.54,-10.25 1.98,-5.36 5.52,-8.76 10.44,-10.02 1.22,-0.31 2.95,-0.57 3.83,-0.56 1.71,0 5.62,0.94 8.54,2.04 1.55,0.58 1.86,0.62 2.48,0.28 0.39,-0.21 0.85,-0.3 1.02,-0.2 0.19,0.12 0.3,1.81 0.29,4.64 -0.01,3.88 -0.07,4.44 -0.46,4.37 -0.25,-0.05 -0.61,-0.63 -0.8,-1.3 -0.9,-3.05 -4.02,-6.44 -6.94,-7.55 -1.95,-0.74 -4.78,-0.88 -6.68,-0.33 -2.75,0.79 -5.19,3.3 -6.4,6.6 -0.85,2.32 -1.03,8.14 -0.34,11.04 0.97,4.04 3.65,7.94 6.31,9.14 2.05,0.93 6.2,0.54 8.54,-0.81 1.53,-0.88 1.98,-2.11 1.88,-5.16 -0.11,-3.49 -0.53,-4.09 -3.2,-4.66 -1.21,-0.26 -1.91,-0.54 -1.91,-0.79 0,-0.31 0.95,-0.39 4.69,-0.39 2.58,0 5.49,-0.08 6.46,-0.18 1.51,-0.16 1.76,-0.12 1.76,0.28 0,0.26 -0.44,0.65 -1.01,0.89 -1.49,0.62 -1.86,1.75 -1.86,5.75 0,1.82 -0.03,3.31 -0.08,3.31 -0.04,0 -1.41,0.58 -3.04,1.29 -4.72,2.05 -7.28,2.76 -10.37,2.9 -1.9,0.08 -3.2,-0.01 -4.29,-0.32zM165.46,162.28c-3.79,-0.98 -6.12,-4.44 -6.12,-9.08 0,-2.07 0.12,-2.72 0.81,-4.24 1.69,-3.73 4.07,-5.37 7.78,-5.36 2.58,0.01 3.97,0.55 5.56,2.17 1.45,1.48 2.2,2.99 2.2,4.41v1.16l-4.38,0.06c-8.12,0.11 -7.68,0.02 -7.68,1.66 0,3.39 3.28,6.9 6.44,6.88 1.67,-0.01 3.44,-0.73 4.44,-1.82 0.79,-0.86 1.46,-0.98 1.46,-0.27 0,0.67 -2.44,2.88 -4.13,3.74 -1.53,0.77 -4.73,1.12 -6.39,0.69zM171.02,149.86c1.33,-1.1 -0.8,-4.68 -3.12,-5.26 -1.69,-0.42 -3.66,1.27 -4.31,3.7 -0.28,1.06 -0.27,1.37 0.06,1.78 0.36,0.43 0.79,0.47 3.7,0.29 1.81,-0.11 3.46,-0.34 3.66,-0.5zM150.56,161.93c-0.17,-0.27 0.63,-1.09 1.09,-1.11 0.11,-0 0.41,-0.4 0.65,-0.87 0.39,-0.75 0.44,-2.49 0.37,-13.17 -0.08,-11.64 -0.11,-12.34 -0.63,-12.91 -0.3,-0.33 -0.75,-0.61 -1,-0.61 -0.25,-0 -0.65,-0.13 -0.89,-0.28 -0.64,-0.41 -0.08,-0.81 1.86,-1.31 0.93,-0.24 2.28,-0.72 3,-1.06 0.72,-0.34 1.51,-0.71 1.75,-0.82 0.39,-0.18 0.44,1.44 0.43,14.38 -0,14.32 0,14.6 0.59,15.39 0.37,0.5 1.11,0.97 1.94,1.22 0.97,0.3 1.34,0.56 1.34,0.94 0,0.49 -0.16,0.51 -1.94,0.31 -2.4,-0.28 -4.92,-0.29 -6.88,-0.02 -0.93,0.12 -1.57,0.09 -1.68,-0.09zM92.91,138.26c0.18,-0.94 -0.51,-2.99 -1,-2.99 -0.16,0 -0.37,0.27 -0.47,0.6 -0.1,0.33 -0.26,0.52 -0.36,0.43 -0.24,-0.24 -1.21,1.32 -1.21,1.94 -0,0.74 -0.64,0.45 -1.11,-0.5 -0.33,-0.67 -0.32,-0.96 0.01,-1.84 0.22,-0.58 0.56,-1.05 0.76,-1.05 0.54,0 1.46,-1.33 1.47,-2.12 0.01,-0.59 0.07,-0.63 0.46,-0.31 0.25,0.21 0.64,0.75 0.88,1.2 0.32,0.62 0.52,0.75 0.79,0.53 0.27,-0.23 0.48,-0.05 0.84,0.71 0.69,1.45 0.6,2.29 -0.38,3.35l-0.86,0.94z"
+      android:fillColor="#000000"/>
+</vector>
+
+
+drawable\more_horiz_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M240,560Q207,560 183.5,536.5Q160,513 160,480Q160,447 183.5,423.5Q207,400 240,400Q273,400 296.5,423.5Q320,447 320,480Q320,513 296.5,536.5Q273,560 240,560ZM480,560Q447,560 423.5,536.5Q400,513 400,480Q400,447 423.5,423.5Q447,400 480,400Q513,400 536.5,423.5Q560,447 560,480Q560,513 536.5,536.5Q513,560 480,560ZM720,560Q687,560 663.5,536.5Q640,513 640,480Q640,447 663.5,423.5Q687,400 720,400Q753,400 776.5,423.5Q800,447 800,480Q800,513 776.5,536.5Q753,560 720,560Z"/>
+</vector>
+
+
+drawable\save_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M840,280L840,760Q840,793 816.5,816.5Q793,840 760,840L200,840Q167,840 143.5,816.5Q120,793 120,760L120,200Q120,167 143.5,143.5Q167,120 200,120L680,120L840,280ZM760,314L646,200L200,200Q200,200 200,200Q200,200 200,200L200,760Q200,760 200,760Q200,760 200,760L760,760Q760,760 760,760Q760,760 760,760L760,314ZM480,720Q530,720 565,685Q600,650 600,600Q600,550 565,515Q530,480 480,480Q430,480 395,515Q360,550 360,600Q360,650 395,685Q430,720 480,720ZM240,400L600,400L600,240L240,240L240,400ZM200,314L200,760Q200,760 200,760Q200,760 200,760L200,760Q200,760 200,760Q200,760 200,760L200,200Q200,200 200,200Q200,200 200,200L200,200L200,314Z"/>
+</vector>
+
+
+drawable\settings_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M370,880L354,752Q341,747 329.5,740Q318,733 307,725L188,775L78,585L181,507Q180,500 180,493.5Q180,487 180,480Q180,473 180,466.5Q180,460 181,453L78,375L188,185L307,235Q318,227 330,220Q342,213 354,208L370,80L590,80L606,208Q619,213 630.5,220Q642,227 653,235L772,185L882,375L779,453Q780,460 780,466.5Q780,473 780,480Q780,487 780,493.5Q780,500 778,507L881,585L771,775L653,725Q642,733 630,740Q618,747 606,752L590,880L370,880ZM440,800L519,800L533,694Q564,686 590.5,670.5Q617,655 639,633L738,674L777,606L691,541Q696,527 698,511.5Q700,496 700,480Q700,464 698,448.5Q696,433 691,419L777,354L738,286L639,328Q617,305 590.5,289.5Q564,274 533,266L520,160L441,160L427,266Q396,274 369.5,289.5Q343,305 321,327L222,286L183,354L269,418Q264,433 262,448Q260,463 260,480Q260,496 262,511Q264,526 269,541L183,606L222,674L321,632Q343,655 369.5,670.5Q396,686 427,694L440,800ZM482,620Q540,620 581,579Q622,538 622,480Q622,422 581,381Q540,340 482,340Q423,340 382.5,381Q342,422 342,480Q342,538 382.5,579Q423,620 482,620ZM480,480L480,480Q480,480 480,480Q480,480 480,480L480,480L480,480L480,480Q480,480 480,480Q480,480 480,480Q480,480 480,480Q480,480 480,480L480,480L480,480L480,480Q480,480 480,480Q480,480 480,480L480,480L480,480L480,480Q480,480 480,480Q480,480 480,480L480,480L480,480L480,480Q480,480 480,480Q480,480 480,480Q480,480 480,480Q480,480 480,480L480,480L480,480L480,480Q480,480 480,480Q480,480 480,480L480,480Z"/>
+</vector>
+
+
+drawable\system_update_alt_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M160,800Q127,800 103.5,776.5Q80,753 80,720L80,240Q80,207 103.5,183.5Q127,160 160,160L360,160L360,240L160,240Q160,240 160,240Q160,240 160,240L160,720Q160,720 160,720Q160,720 160,720L800,720Q800,720 800,720Q800,720 800,720L800,240Q800,240 800,240Q800,240 800,240L600,240L600,160L800,160Q833,160 856.5,183.5Q880,207 880,240L880,720Q880,753 856.5,776.5Q833,800 800,800L160,800ZM480,616L280,416L336,360L440,464L440,160L520,160L520,464L624,360L680,416L480,616Z"/>
+</vector>
+
+
+drawable\upload_24px.xml:
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M440,640L440,314L336,418L280,360L480,160L680,360L624,418L520,314L520,640L440,640ZM240,800Q207,800 183.5,776.5Q160,753 160,720L160,600L240,600L240,720Q240,720 240,720Q240,720 240,720L720,720Q720,720 720,720Q720,720 720,720L720,600L800,600L800,720Q800,753 776.5,776.5Q753,800 720,800L240,800Z"/>
+</vector>
+
+
+layout\activity_about.xml:
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -65,7 +583,7 @@ activity_about.xml:
 
 </androidx.constraintlayout.widget.ConstraintLayout>
 
-activity_editor.xml:
+layout\activity_editor.xml:
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -198,6 +716,42 @@ activity_editor.xml:
 
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/pagination_controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="8dp"
+        android:background="?attr/colorSurface"
+        android:elevation="8dp">
+
+        <ImageButton
+            android:id="@+id/btn_prev_page"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/arrow_back_24px"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Previous Page"/>
+
+        <TextView
+            android:id="@+id/text_page_indicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:text="Section 1 / 1"
+            android:textAppearance="@style/TextAppearance.MaterialComponents.Body2"/>
+
+        <ImageButton
+            android:id="@+id/btn_next_page"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/arrow_forward_24px"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Next Page"/>
+
+    </LinearLayout>
+
     <ProgressBar
         android:id="@+id/loading_progress"
         android:layout_width="wrap_content"
@@ -207,7 +761,7 @@ activity_editor.xml:
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
-activity_main.xml:
+layout\activity_main.xml:
 <?xml version="1.0" encoding="utf-8"?>
 <!-- activity_main.xml -->
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -269,7 +823,7 @@ activity_main.xml:
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
-activity_share.xml:
+layout\activity_share.xml:
 <?xml version="1.0" encoding="utf-8"?>
 <!-- activity_share.xml -->
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -350,7 +904,7 @@ activity_share.xml:
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
-activity_upload.xml:
+layout\activity_upload.xml:
 <?xml version="1.0" encoding="utf-8"?>
 <!-- activity_upload.xml -->
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -431,7 +985,7 @@ activity_upload.xml:
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
-bottom_sheet_book_menu.xml:
+layout\bottom_sheet_book_menu.xml:
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -505,7 +1059,7 @@ bottom_sheet_book_menu.xml:
 
 </LinearLayout>
 
-content_editor.xml:
+layout\content_editor.xml:
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -514,7 +1068,7 @@ content_editor.xml:
     app:layout_behavior="@string/appbar_scrolling_view_behavior">
 </androidx.constraintlayout.widget.ConstraintLayout>
 
-dialog_find_replace.xml:
+layout\dialog_find_replace.xml:
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -549,7 +1103,7 @@ dialog_find_replace.xml:
 
 </LinearLayout>
 
-dialog_new_book.xml:
+layout\dialog_new_book.xml:
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -577,7 +1131,7 @@ dialog_new_book.xml:
 
 </LinearLayout>
 
-dialog_rename_book.xml:
+layout\dialog_rename_book.xml:
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -604,7 +1158,7 @@ dialog_rename_book.xml:
 
 </LinearLayout>
 
-item_book.xml:
+layout\item_book.xml:
 <?xml version="1.0" encoding="utf-8"?>
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -677,7 +1231,7 @@ item_book.xml:
     </androidx.constraintlayout.widget.ConstraintLayout>
 </com.google.android.material.card.MaterialCardView>
 
-view_typewriter.xml:
+layout\view_typewriter.xml:
 <?xml version="1.0" encoding="utf-8"?>
 <!-- view_typewriter.xml -->
 <merge xmlns:android="http://schemas.android.com/apk/res/android"
@@ -734,3 +1288,343 @@ view_typewriter.xml:
     </androidx.cardview.widget.CardView>
 
 </merge>
+
+layout-sw600dp\view_typewriter.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<!-- view_typewriter.xml -->
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:parentTag="androidx.constraintlayout.widget.ConstraintLayout">
+
+    <androidx.cardview.widget.CardView
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp"
+        app:cardElevation="8dp"
+        app:cardBackgroundColor="@color/scrollview_background"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Blur background layer -->
+        <View
+            android:id="@+id/blurBackground"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/scrollview_background" />
+
+        <!-- Content layer on top -->
+        <ScrollView
+            android:id="@+id/scrollView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:background="@android:color/transparent">
+
+            <EditText
+                android:id="@+id/editText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:autofillHints="Document body"
+                android:background="@android:color/transparent"
+                android:gravity="top"
+                android:hint="@string/document_body"
+                android:inputType="textMultiLine"
+                android:minHeight="?android:attr/listPreferredItemHeight"
+                android:padding="16dp"
+                tools:ignore="ScrollViewSize" />
+
+        </ScrollView>
+
+    </androidx.cardview.widget.CardView>
+
+</merge>
+
+menu\bottom_app_bar_menu.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<!-- bottom_app_bar_menu.xml -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_upload"
+        android:icon="@drawable/upload_24px"
+        android:title="@string/action_upload"
+        android:contentDescription="@string/open_upload"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/action_settings"
+        android:icon="@drawable/settings_24px"
+        android:title="@string/action_settings"
+        android:contentDescription="@string/open_settings"
+        app:showAsAction="ifRoom" />
+
+</menu>
+
+menu\menu_editor.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_find_replace"
+        android:title="@string/find_replace"
+        android:icon="@drawable/find_replace_24px"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/action_statistics"
+        android:title="@string/statistics"
+        android:icon="@drawable/bar_chart_24px"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/action_save"
+        android:title="@string/save"
+        android:icon="@drawable/save_24px"
+        app:showAsAction="ifRoom" />
+
+</menu>
+
+mipmap-anydpi-v26\ic_launcher.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>
+
+mipmap-anydpi-v26\ic_launcher_round.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>
+
+values\bools.xml:
+<resources>
+    <bool name="use_aspect_ratio">false</bool>
+</resources>
+
+values\colors.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="surface_dark">#121212</color>
+    <color name="surface_light">#FFFFFF</color>
+    <color name="error_color">#FF0000</color>
+    <color name="scrollview_background">#E6FFFFFF</color>
+</resources>
+
+values\dimens.xml:
+<resources>
+    <dimen name="fab_margin">16dp</dimen>
+    <dimen name="scrollview_margin_top">0dp</dimen>
+    <dimen name="scrollview_padding">12dp</dimen>
+</resources>
+
+values\ic_launcher_background.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#000000</color>
+</resources>
+
+values\ids.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+</resources>
+
+values\strings.xml:
+<resources>
+    <string name="app_name">Gnimble</string>
+    <string name="action_settings">Settings</string>
+    <string name="next">Next</string>
+    <string name="previous">Previous</string>
+    <string name="bold">Bold</string>
+    <string name="italic">Italic</string>
+    <string name="document_body">It was a dark and stormy night…</string>
+    <string name="insert_image">Insert Image</string>
+    <string name="align_right">Align Right</string>
+    <string name="align_center">Align Center</string>
+    <string name="align_left">Align Left</string>
+    <string name="font_family">Font Family</string>
+    <string name="heading_style">Heading Style</string>
+    <string name="back_button_description">Return</string>
+    <string name="book_cover_image">Book Cover Image</string>
+    <string name="open">Open</string>
+    <string name="add_new_book">Create New Story</string>
+    <string name="story_title">Story Title</string>
+    <string name="create">Create</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete">Delete</string>
+    <string name="edit">Edit</string>
+    <string name="save">Save</string>
+    <string name="no_books_yet">No Books Yet</string>
+    <string name="book_title">Book Title</string>
+    <string name="subtitle">Subtitle</string>
+    <string name="share_book">Network Share</string>
+    <string name="menu_options">Options</string>
+    <string name="open_settings">Open Settings</string>
+    <string name="stop_sharing">Stop Sharing</string>
+    <string name="qr_code_for_sharing">QR Code for Sharing</string>
+    <string name="starting_server">Starting server…</string>
+    <string name="share_your_book">Share Your Story</string>
+    <string name="create_new_story">Create New Story</string>
+    <string name="align_full">Align Full</string>
+    <string name="find_replace">Find and Replace</string>
+    <string name="statistics">Statistics</string>
+    <string name="find_text">Find Text</string>
+    <string name="replace_with">Replace With</string>
+    <string name="open_upload">Upload Files</string>
+    <string name="action_upload">Upload Files</string>
+    <string name="stop_upload_server">Stop Upload Server</string>
+    <string name="qr_code_for_upload">QR Code for Upload</string>
+    <string name="starting_upload_server">Start Upload Server</string>
+    <string name="receive_files">Receive Files</string>
+    <string name="underline">Underline</string>
+    <string name="open_update">Update Gnimble app</string>
+    <string name="action_update">Update Gnimble</string>
+    <string name="gnimble_typewriter_version">Software Version 1.0 ©2025</string>
+    <string name="gnimble_typewriter_subtext">Made with 💙 by Cinemint</string>
+    <string name="gnimble_typewriter_subsubtext">Artwork of Lori by Lomtek</string>
+    <string name="close">Close</string>
+</resources>
+
+values\themes.xml:
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.Gnimble.Launcher" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+
+        <item name="android:windowBackground">?attr/colorSurface</item> <item name="android:windowShowWallpaper">false</item>
+
+        <item name="android:colorBackgroundCacheHint">@null</item>
+        <item name="android:windowContentOverlay">@null</item>
+
+        <item name="android:windowAnimationStyle">@null</item>
+
+        <item name="android:windowDisablePreview">false</item>
+    </style>
+</resources>
+
+values-land\dimens.xml:
+<resources>
+    <dimen name="fab_margin">48dp</dimen>
+</resources>
+
+values-night\colors.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="surface_dark">#121212</color>
+    <color name="surface_light">#FFFFFF</color>
+    <color name="scrollview_background">#AA000000</color>
+</resources>
+
+values-night\themes.xml:
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.Theme.Gnimble" parent="Theme.Material3.DayNight.NoActionBar">
+    </style>
+</resources>
+
+values-sw600dp\bools.xml:
+<resources>
+    <bool name="use_aspect_ratio">true</bool>
+</resources>
+
+values-v23\themes.xml:
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <style name="Theme.Gnimble" parent="Base.Theme.Gnimble">
+        <!-- Transparent system bars for edge-to-edge. -->
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">?attr/isLightTheme</item>
+    </style>
+</resources>
+
+values-w1240dp\dimens.xml:
+<resources>
+    <dimen name="fab_margin">200dp</dimen>
+</resources>
+
+values-w600dp\dimens.xml:
+<resources>
+    <dimen name="fab_margin">48dp</dimen>
+    <dimen name="scrollview_margin_top">32dp</dimen>
+    <dimen name="scrollview_padding">64dp</dimen>
+</resources>
+
+xml\backup_rules.xml:
+<?xml version="1.0" encoding="utf-8"?><!--
+   Sample backup rules file; uncomment and customize as necessary.
+   See https://developer.android.com/guide/topics/data/autobackup
+   for details.
+   Note: This file is ignored for devices older than API 31
+   See https://developer.android.com/about/versions/12/backup-restore
+-->
+<full-backup-content>
+    <!--
+   <include domain="sharedpref" path="."/>
+   <exclude domain="sharedpref" path="device.xml"/>
+-->
+</full-backup-content>
+
+xml\data_extraction_rules.xml:
+<?xml version="1.0" encoding="utf-8"?><!--
+   Sample data extraction rules file; uncomment and customize as necessary.
+   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
+   for details.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- TODO: Use <include> and <exclude> to control what is backed up.
+        <include .../>
+        <exclude .../>
+        -->
+    </cloud-backup>
+    <!--
+    <device-transfer>
+        <include .../>
+        <exclude .../>
+    </device-transfer>
+    -->
+</data-extraction-rules>
+
+xml\file_paths.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Create this file at: res/xml/file_paths.xml -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- External files directory for downloads -->
+    <external-files-path
+        name="downloads"
+        path="Download/" />
+
+    <!-- External storage root (for broader compatibility) -->
+    <external-path
+        name="external_files"
+        path="." />
+
+    <!-- App's external files directory -->
+    <external-files-path
+        name="external_app_files"
+        path="." />
+</paths>

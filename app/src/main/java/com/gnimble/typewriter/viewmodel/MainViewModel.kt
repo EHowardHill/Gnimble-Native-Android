@@ -43,15 +43,4 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateLastEdited(bookId: Long) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.updateLastEdited(bookId)
-        }
-    }
-
-    suspend fun getBook(bookId: Long): Book? {
-        return withContext(Dispatchers.IO) {
-            repository.getBook(bookId)
-        }
-    }
 }

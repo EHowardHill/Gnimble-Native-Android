@@ -161,8 +161,6 @@ class ShareActivity : AppCompatActivity() {
                 val mapping = FONT_MAPPINGS[fontName]!!
                 googleFontUrl = """<link href="${mapping.googleFontUrl}" rel="stylesheet">"""
                 cssFontFamily = "'${mapping.familyName}', serif"
-                if (mapping.weight != "400") cssFontWeight = mapping.weight
-                if (mapping.style != "normal") cssFontStyle = mapping.style
             }
 
             // 2. Simplify body processing (we don't need convertFontReferences anymore)
@@ -177,106 +175,130 @@ class ShareActivity : AppCompatActivity() {
             val dynamicFontLinks = generateFontLinks(usedFonts)
 
             return """
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>$title</title>
-                $googleFontUrl
-                $dynamicFontLinks
-                <style>
-                    body {
-                        font-family: $cssFontFamily;
-                        font-weight: $cssFontWeight;
-                        font-style: $cssFontStyle;
-                        line-height: 1.6;
-                        color: #333;
-                        max-width: 800px;
-                        margin: 0 auto;
-                        padding: 20px;
-                        background-color: #f5f5f5;
-                    }
-                    .container {
-                        background-color: white;
-                        padding: 30px;
-                        border-radius: 10px;
-                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                    }
-                    h1 {
-                        color: #2c3e50;
-                        margin-bottom: 10px;
-                    }
-                    h2 {
-                        color: #7f8c8d;
-                        font-weight: normal;
-                        margin-top: 0;
-                        margin-bottom: 30px;
-                    }
-                    .content {
-                        text-align: justify;
-                        margin-top: 30px;
-                    }
-                    .content p {
-                        margin-bottom: 1.5em;
-                    }
-                    .content p.indented-paragraph {
-                        text-indent: 2em;
-                    }
-                    /* Text formatting styles */
-                    .content b, .content strong {
-                        font-weight: bold;
-                    }
-                    .content i, .content em {
-                        font-style: italic;
-                    }
-                    .content .large-text, .content span[style*="font-size: 2"], .content span[style*="font-size: 1.7"], .content span[style*="font-size: 1.5"] {
-                        font-size: 1.5em;
-                    }
-                    .content .small-text, .content span[style*="font-size: 0."] {
-                        font-size: 0.85em;
-                    }
-                    /* Alignment styles */
-                    .content .align-center, .content p.align-center {
-                        text-align: center !important;
-                        text-indent: 0 !important;
-                    }
-                    .content .align-right, .content p.align-right {
-                        text-align: right !important;
-                        text-indent: 0 !important;
-                    }
-                    .content .align-justify, .content p.align-justify {
-                        text-align: justify !important;
-                        text-indent: 0 !important;
-                    }
-                    /* Dynamic Font Styles */
-                    $dynamicFontStyles
-                    
-                    .footer {
-                        margin-top: 40px;
-                        padding-top: 20px;
-                        border-top: 1px solid #e0e0e0;
-                        text-align: center;
-                        color: #7f8c8d;
-                        font-size: 0.9em;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>${escapeHtml(title)}</h1>
-                    ${if (subtitle.isNotEmpty()) "<h2>${escapeHtml(subtitle)}</h2>" else ""}
-                    
-                    <div class="content">
-                        $bodyContent
-                    </div>
-                    
-                    <div class="footer">
-                        <p>Shared with 💙 from Gnimble Typewriter</p>
-                    </div>
-                </div>
-            </body>
-            </html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$title</title>
+    $googleFontUrl
+    $dynamicFontLinks
+    <style>
+        @page {
+            margin: 1in;
+            size: auto;
+        }
+
+        body {
+            font-family: $cssFontFamily;
+            font-weight: $cssFontWeight;
+            font-style: $cssFontStyle;
+            line-height: 1.5; /* Slightly tighter than web (1.6) looks better on paper */
+            color: #000000; /* Pure black for print clarity */
+            background-color: white;
+            margin: 0; /* Reset margins so @page takes over */
+            padding: 0;
+        }
+
+        .container {
+            background-color: white;
+            padding: 0; /* Remove internal padding, let margins handle whitespace */
+            border: none;
+            box-shadow: none;
+            max-width: 100%;
+        }
+
+        h1 {
+            color: #000000;
+            margin-bottom: 0.5em;
+            font-size: 24pt; /* Use pt for print sizing */
+        }
+
+        h2 {
+            color: #000000;
+            font-weight: normal;
+            margin-top: 0;
+            margin-bottom: 1.5em;
+            font-size: 14pt;
+            border-bottom: 1px solid #000; /* Optional: adds a nice professional separator */
+            padding-bottom: 5px;
+        }
+
+        .content {
+            text-align: justify;
+            margin-top: 20px;
+        }
+
+        .content p {
+            margin-bottom: 1em;
+            orphans: 3; /* Prevents a single line appearing at bottom of page */
+            widows: 3;  /* Prevents a single line appearing at top of next page */
+        }
+
+        .content p.indented-paragraph {
+            text-indent: 2em;
+        }
+
+        /* Text formatting styles */
+        .content b, .content strong {
+            font-weight: bold;
+        }
+        .content i, .content em {
+            font-style: italic;
+        }
+
+        /* Print-friendly font sizing */
+        .content .large-text, .content span[style*="font-size: 2"], .content span[style*="font-size: 1.7"], .content span[style*="font-size: 1.5"] {
+            font-size: 14pt;
+        }
+        .content .small-text, .content span[style*="font-size: 0."] {
+            font-size: 9pt;
+        }
+
+        /* Alignment styles */
+        .content .align-center, .content p.align-center {
+            text-align: center !important;
+            text-indent: 0 !important;
+        }
+        .content .align-right, .content p.align-right {
+            text-align: right !important;
+            text-indent: 0 !important;
+        }
+        .content .align-justify, .content p.align-justify {
+            text-align: justify !important;
+            text-indent: 0 !important;
+        }
+
+        $dynamicFontStyles
+        
+        /* 6. FOOTER */
+        .footer {
+            margin-top: 40px;
+            padding-top: 10px;
+            border-top: 1px solid #000;
+            text-align: center;
+            color: #000;
+            font-size: 9pt;
+        }
+
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>${escapeHtml(title)}</h1>
+        ${if (subtitle.isNotEmpty()) "<h2>${escapeHtml(subtitle)}</h2>" else ""}
+        
+        <div class="content">
+            $bodyContent
+        </div>
+    </div>
+</body>
+</html>
             """.trimIndent()
         }
 
