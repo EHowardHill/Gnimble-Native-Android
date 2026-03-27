@@ -27,9 +27,11 @@ import com.journeyapps.barcodescanner.BarcodeEncoder
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.text.SimpleDateFormat
 import java.util.*
@@ -164,10 +166,10 @@ class UploadActivity : AppCompatActivity() {
 
         // Convert special characters
         text = text.replace("\\'92", "'")
-        text = text.replace("\\'93", """)
-        text = text.replace("\\'94", """)
-        text = text.replace("\\'96", "–")
-        text = text.replace("\\'97", "—")
+        text = text.replace("\\'93", "\u201C")
+        text = text.replace("\\'94", "\u201D")
+        text = text.replace("\\'96", "\u2013")
+        text = text.replace("\\'97", "\u2014")
         text = text.replace("\\line", "\n")
         text = text.replace("\\par", "\n\n")
 
@@ -317,80 +319,83 @@ class UploadActivity : AppCompatActivity() {
                 val uploadedFileNames = mutableListOf<String>()
                 val createdBooks = mutableListOf<String>()
 
-                session.parameters["file"]?.forEachIndexed { index, fileName ->
-                    val tempFilePath = files["file"]
-                    if (tempFilePath != null) {
-                        val tempFile = File(tempFilePath)
-                        if (tempFile.exists()) {
-                            when {
-                                isImageFile(fileName) -> {
-                                    // Handle image files as before
-                                    val savedFileName = saveImageToMediaStore(tempFile, fileName)
-                                    if (savedFileName != null) {
-                                        uploadedFileNames.add(savedFileName)
-                                        activity.runOnUiThread {
-                                            Toast.makeText(activity, "Saved to Pictures: $savedFileName", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                }
-                                isDocumentFile(fileName) -> {
-                                    // Handle document files
-                                    try {
-                                        // Read the file content immediately before it gets deleted
-                                        val content = tempFile.readText()
-                                        val extension = getFileExtension(fileName)
+                // BUG FIX #8: NanoHTTPD stores multiple files under indexed keys.
+                // For multiple files uploaded with the same field name "file",
+                // NanoHTTPD stores temp paths as "file", "file1", "file2", etc.
+                // and the corresponding original filenames are in session.parameters["file"] as a list.
+                val fileNames = session.parameters["file"] ?: emptyList()
 
-                                        // Now process in a coroutine
-                                        lifecycleScope.launch {
-                                            try {
-                                                val book = createBookFromDocument(fileName, content, extension)
+                for (index in fileNames.indices) {
+                    val fileName = fileNames[index]
+                    // NanoHTTPD keys: first file is "file", subsequent are "file1", "file2", etc.
+                    val tempFileKey = if (index == 0) "file" else "file$index"
+                    val tempFilePath = files[tempFileKey] ?: continue
 
-                                                // Insert book into database
-                                                mainViewModel.insert(book) { bookId ->
-                                                    createdBooks.add(book.title)
-                                                    activity.runOnUiThread {
-                                                        Toast.makeText(
-                                                            activity,
-                                                            "Created book: ${book.title}",
-                                                            Toast.LENGTH_SHORT
-                                                        ).show()
-                                                    }
-                                                }
-                                            } catch (e: Exception) {
-                                                Log.e(TAG, "Error creating book from document", e)
-                                                activity.runOnUiThread {
-                                                    Toast.makeText(
-                                                        activity,
-                                                        "Failed to create book from $fileName",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
-                                                }
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Error reading document file", e)
-                                        activity.runOnUiThread {
-                                            Toast.makeText(
-                                                activity,
-                                                "Failed to read file: $fileName",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
+                    val tempFile = File(tempFilePath)
+                    if (!tempFile.exists()) continue
+
+                    try {
+                        when {
+                            isImageFile(fileName) -> {
+                                // Handle image files
+                                val savedFileName = saveImageToMediaStore(tempFile, fileName)
+                                if (savedFileName != null) {
+                                    uploadedFileNames.add(savedFileName)
+                                    activity.runOnUiThread {
+                                        Toast.makeText(activity, "Saved to Pictures: $savedFileName", Toast.LENGTH_SHORT).show()
                                     }
-                                }
-                                else -> {
-                                    Log.w(TAG, "Unsupported file type: $fileName")
                                 }
                             }
+                            isDocumentFile(fileName) -> {
+                                // Handle document files
+                                // Read the file content immediately before it gets deleted
+                                val content = tempFile.readText()
+                                val extension = getFileExtension(fileName)
 
-                            // Delete the temp file
-                            tempFile.delete()
+                                // BUG FIX #9: Use runBlocking on the server thread instead of
+                                // launching a fire-and-forget coroutine + Thread.sleep.
+                                // This ensures the book is fully created before we respond.
+                                try {
+                                    val book = runBlocking {
+                                        createBookFromDocument(fileName, content, extension)
+                                    }
+
+                                    // Insert book into database synchronously (from server thread perspective)
+                                    runBlocking {
+                                        withContext(Dispatchers.IO) {
+                                            val db = com.gnimble.typewriter.data.AppDatabase.getDatabase(activity)
+                                            db.bookDao().insertBook(book)
+                                        }
+                                    }
+
+                                    createdBooks.add(book.title)
+                                    activity.runOnUiThread {
+                                        Toast.makeText(
+                                            activity,
+                                            "Created book: ${book.title}",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error creating book from document", e)
+                                    activity.runOnUiThread {
+                                        Toast.makeText(
+                                            activity,
+                                            "Failed to create book from $fileName",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                            }
+                            else -> {
+                                Log.w(TAG, "Unsupported file type: $fileName")
+                            }
                         }
+                    } finally {
+                        // Delete the temp file
+                        tempFile.delete()
                     }
                 }
-
-                // Wait a bit for books to be created (not ideal, but simple)
-                Thread.sleep(500)
 
                 val totalFiles = uploadedFileNames.size + createdBooks.size
                 if (totalFiles == 0) {
@@ -723,7 +728,7 @@ class UploadActivity : AppCompatActivity() {
             return newFixedLengthResponse(Response.Status.OK, "text/html", html)
         }
 
-}
+    }
 
     private fun generateQRCode(url: String) {
         try {
@@ -738,6 +743,19 @@ class UploadActivity : AppCompatActivity() {
         }
     }
 
+    // BUG FIX #7: Null-safe IP address handling and proper 172.16-31 private range check
+    private fun isPrivateIpAddress(addr: String): Boolean {
+        return addr.startsWith("192.168.") ||
+                addr.startsWith("10.") ||
+                isPrivate172Address(addr)
+    }
+
+    private fun isPrivate172Address(addr: String): Boolean {
+        if (!addr.startsWith("172.")) return false
+        val secondOctet = addr.removePrefix("172.").substringBefore(".").toIntOrNull() ?: return false
+        return secondOctet in 16..31
+    }
+
     private fun getLocalIpAddress(): String {
         try {
             val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
@@ -746,15 +764,10 @@ class UploadActivity : AppCompatActivity() {
 
                 val addrs = Collections.list(intf.inetAddresses)
                 for (addr in addrs) {
-                    if (!addr.isLoopbackAddress) {
-                        val sAddr = addr.hostAddress
-                        val isIPv4 = (sAddr?.indexOf(':') ?: -1) < 0
-                        if (isIPv4 && sAddr != null) {
-                            if (sAddr.startsWith("192.168.") ||
-                                sAddr.startsWith("10.") ||
-                                sAddr.startsWith("172.")) {
-                                return sAddr
-                            }
+                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                        val sAddr = addr.hostAddress ?: continue
+                        if (isPrivateIpAddress(sAddr)) {
+                            return sAddr
                         }
                     }
                 }
@@ -765,7 +778,7 @@ class UploadActivity : AppCompatActivity() {
             if (wifiInterface != null && wifiInterface.isUp) {
                 val addresses = Collections.list(wifiInterface.inetAddresses)
                 for (addr in addresses) {
-                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
                         return addr.hostAddress ?: "localhost"
                     }
                 }

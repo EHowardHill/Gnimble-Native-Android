@@ -2,7 +2,7 @@ package com.gnimble.typewriter
 
 import android.graphics.Typeface
 import android.os.Bundle
-import android.text.Html
+import android.text.SpannableStringBuilder
 import android.text.Spannable
 import android.view.Menu
 import android.view.MenuItem
@@ -28,6 +28,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.floor
+import kotlin.math.min
 
 class EditorActivity : AppCompatActivity() {
 
@@ -53,6 +54,11 @@ class EditorActivity : AppCompatActivity() {
     private var pages = mutableListOf<String>()
     private var currentPageIndex = 0
     private val CHARS_PER_PAGE = 10000 // Split approx every 10k chars (adjustable)
+
+    // BUG FIX #3: Flag to suppress text watchers during programmatic text changes.
+    // This prevents the auto-save and overflow watchers from firing during pagination
+    // operations, which could corrupt page state or cause infinite loops.
+    private var suppressTextWatchers = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -106,23 +112,36 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun changePage(newIndex: Int) {
-        // 1. Save current edits to the memory buffer
-        saveCurrentPageToBuffer()
+        // BUG FIX #3: Suppress watchers during page change to prevent auto-save
+        // and overflow watcher from firing while we modify the EditText programmatically.
+        suppressTextWatchers = true
+        try {
+            // 1. Save current edits to the memory buffer
+            saveCurrentPageToBuffer()
 
-        // 2. Clear the EditText to free memory immediately
-        binding.typewriter.editText.text = null
+            // 2. Clear the EditText to free memory immediately
+            binding.typewriter.editText.text = null
 
-        // 3. Update index
-        currentPageIndex = newIndex
+            // 3. Update index
+            currentPageIndex = newIndex
 
-        // 4. Load the new page
-        loadPageToEditor(newIndex)
+            // 4. Load the new page
+            loadPageToEditor(newIndex)
 
-        // 5. Update UI
-        updatePaginationUI()
+            // 5. Update UI
+            updatePaginationUI()
+        } finally {
+            suppressTextWatchers = false
+        }
     }
 
     private fun loadPageToEditor(index: Int) {
+        // BUG FIX #4: Guard against invalid index or empty pages list
+        if (index < 0 || index >= pages.size) {
+            binding.loadingProgress.visibility = View.GONE
+            return
+        }
+
         binding.loadingProgress.visibility = View.VISIBLE
 
         lifecycleScope.launch {
@@ -143,8 +162,14 @@ class EditorActivity : AppCompatActivity() {
                 Pair(spannable, font)
             }
 
-            binding.typewriter.setContent(spannableContent)
-            binding.typewriter.setGlobalFont(fontToSelect)
+            // BUG FIX #3: Suppress watchers while loading content into the editor
+            suppressTextWatchers = true
+            try {
+                binding.typewriter.setContent(spannableContent)
+                binding.typewriter.setGlobalFont(fontToSelect)
+            } finally {
+                suppressTextWatchers = false
+            }
             binding.loadingProgress.visibility = View.GONE
         }
     }
@@ -159,14 +184,15 @@ class EditorActivity : AppCompatActivity() {
     // Capture what is currently in the EditText and store it in our pages list
     private fun saveCurrentPageToBuffer() {
         if (currentPageIndex >= 0 && currentPageIndex < pages.size) {
-            val htmlHandler = SimpleHtmlHandler(this)
-            // Convert current spannable back to HTML
-            // Note: includeWrapper=false because we just want the body content for the chunk
-            val htmlContent = htmlHandler.spannableToHtml(
-                binding.typewriter.editText.text as Spannable,
-                includeWrapper = false
-            )
-            pages[currentPageIndex] = htmlContent
+            val editableText = binding.typewriter.editText.text
+            if (editableText != null && editableText is Spannable) {
+                val htmlHandler = SimpleHtmlHandler(this)
+                val htmlContent = htmlHandler.spannableToHtml(
+                    editableText,
+                    includeWrapper = false
+                )
+                pages[currentPageIndex] = htmlContent
+            }
         }
     }
 
@@ -313,6 +339,9 @@ class EditorActivity : AppCompatActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: android.text.Editable?) {
+                // BUG FIX #3: Skip auto-save during programmatic text changes (pagination)
+                if (suppressTextWatchers) return
+
                 // Cancel previous save
                 saveRunnable?.let { binding.typewriter.editText.removeCallbacks(it) }
 
@@ -431,8 +460,11 @@ class EditorActivity : AppCompatActivity() {
             }
 
             R.id.action_statistics -> {
-                val wordCount = getWordCount()
-                val pageCount = getPageCount()
+                // BUG FIX #5: Compute statistics across ALL pages, not just the current one.
+                // Save current page to buffer first so its content is up-to-date.
+                saveCurrentPageToBuffer()
+                val wordCount = getTotalWordCount()
+                val pageCount = getTotalPageCount()
                 val message = "Word Count: $wordCount\nPage Count: $pageCount"
 
                 AlertDialog.Builder(this)
@@ -474,9 +506,27 @@ class EditorActivity : AppCompatActivity() {
                 val replaceText = replaceEditText.text.toString()
 
                 if (findText.isNotEmpty()) {
-                    val originalContent = mainEditText.text.toString()
-                    val newContent = originalContent.replace(findText, replaceText, ignoreCase = true)
-                    mainEditText.setText(newContent)
+                    // BUG FIX #6: Replace All now works across all pages, and preserves
+                    // spans on the current page by using Editable.replace() instead of setText().
+                    saveCurrentPageToBuffer()
+
+                    // Replace in all non-current pages (HTML level)
+                    for (i in pages.indices) {
+                        if (i != currentPageIndex) {
+                            pages[i] = pages[i].replace(findText, replaceText, ignoreCase = true)
+                        }
+                    }
+
+                    // Replace in the current page using Editable to preserve spans
+                    val editable = mainEditText.text
+                    var searchFrom = 0
+                    while (searchFrom < editable.length) {
+                        val idx = editable.toString().indexOf(findText, searchFrom, ignoreCase = true)
+                        if (idx == -1) break
+                        editable.replace(idx, idx + findText.length, replaceText)
+                        searchFrom = idx + replaceText.length
+                    }
+
                     Toast.makeText(this, "All occurrences replaced.", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -539,20 +589,24 @@ class EditorActivity : AppCompatActivity() {
         saveBook()
     }
 
-    fun getWordCount(): Int {
-        val text = binding.typewriter.editText.text.toString()
-        if (text.isBlank()) return 0
-        return text.trim().split("\\s+".toRegex()).size
+    // BUG FIX #5: Renamed from getWordCount and now computes across ALL pages
+    fun getTotalWordCount(): Int {
+        saveCurrentPageToBuffer()
+        var totalWords = 0
+        for (pageHtml in pages) {
+            val plainText = pageHtml.replace(Regex("<[^>]+>"), " ").trim()
+            if (plainText.isNotBlank()) {
+                totalWords += plainText.trim().split("\\s+".toRegex()).size
+            }
+        }
+        return totalWords
     }
 
-    fun getPageCount(): Int {
-        val layout = binding.typewriter.editText.layout ?: return 1
-        val textHeightInPixels = layout.height
-        val ydpi = resources.displayMetrics.ydpi
-        if (ydpi <= 0) return 1
-        val heightInInches = textHeightInPixels / ydpi
-        val pageCount = floor(heightInInches / 7.0).toInt() + 1
-        return pageCount.coerceAtLeast(1)
+    // BUG FIX #5: Renamed from getPageCount and provides total across all sections
+    fun getTotalPageCount(): Int {
+        // Each section/page is one logical page at minimum.
+        // For a more accurate count, we could estimate from total content length.
+        return pages.size.coerceAtLeast(1)
     }
 
     // Constants for pagination limits
@@ -565,6 +619,8 @@ class EditorActivity : AppCompatActivity() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
 
             override fun afterTextChanged(s: android.text.Editable?) {
+                // BUG FIX #3: Skip during programmatic text changes (pagination, loading)
+                if (suppressTextWatchers) return
                 if (s == null) return
 
                 // Check if we exceeded the hard limit
@@ -576,41 +632,50 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun performAutoPagination(content: android.text.Editable) {
-        // 1. Find the best place to split (the last paragraph break)
-        // We look for the last newline character before the preferred limit
-        // to avoid splitting the user mid-sentence.
-        var splitIndex = content.lastIndexOf('\n')
+        // BUG FIX #2: Find a split point that is actually valid within the content's bounds.
+        // Search for the last newline before the PREFERRED_PAGE_SIZE limit.
+        val searchLimit = min(PREFERRED_PAGE_SIZE, content.length)
+        var splitIndex = -1
 
-        // If the user wrote one massive paragraph (rare), just split at the limit
-        if (splitIndex == -1 || splitIndex < 100) {
-            splitIndex = PREFERRED_PAGE_SIZE
+        // Search backwards from the preferred limit for a newline
+        for (i in searchLimit - 1 downTo 0) {
+            if (content[i] == '\n') {
+                splitIndex = i
+                break
+            }
         }
 
-        // 2. Extract the text that needs to move to the next page
-        val overflowSpannable = content.subSequence(splitIndex + 1, content.length)
+        // If no newline found (one massive paragraph), split at the preferred size
+        // but clamp to content.length to prevent IndexOutOfBoundsException
+        if (splitIndex == -1 || splitIndex < 100) {
+            splitIndex = min(PREFERRED_PAGE_SIZE, content.length - 1)
+        }
 
-        // 3. Keep the text that stays on this page
-        val keepSpannable = content.subSequence(0, splitIndex)
+        // Safety check: ensure splitIndex is valid
+        if (splitIndex <= 0 || splitIndex >= content.length) {
+            return // Cannot safely split
+        }
 
-        // 4. Convert both to HTML for storage
+        // BUG FIX #1: Use SpannableStringBuilder to safely copy spans instead of
+        // casting CharSequence to Spannable which causes ClassCastException.
+        val keepSpannable = SpannableStringBuilder(content, 0, splitIndex)
+        val overflowSpannable = SpannableStringBuilder(content, splitIndex + 1, content.length)
+
+        // Convert both to HTML for storage
         val htmlHandler = SimpleHtmlHandler(this)
-        val currentHtml = htmlHandler.spannableToHtml(keepSpannable as Spannable, false)
-        val overflowHtml = htmlHandler.spannableToHtml(overflowSpannable as Spannable, false)
+        val currentHtml = htmlHandler.spannableToHtml(keepSpannable, false)
+        val overflowHtml = htmlHandler.spannableToHtml(overflowSpannable, false)
 
-        // 5. Update current page in memory
+        // Update current page in memory
         pages[currentPageIndex] = currentHtml
 
-        // 6. Insert new page AFTER current page
-        // We add it to index + 1
+        // Insert new page AFTER current page
         pages.add(currentPageIndex + 1, overflowHtml)
 
-        // 7. Remove the TextWatcher temporarily to avoid infinite loops while we modify UI
-        // (Note: clearFocus or simple text setting usually triggers watchers)
-
-        // 8. Move user to the new page automatically
+        // Move user to the new page automatically
         changePage(currentPageIndex + 1)
 
-        // 9. Notify user
+        // Notify user
         Toast.makeText(this, "Section full! Created new section.", Toast.LENGTH_SHORT).show()
     }
 

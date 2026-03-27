@@ -1,26 +1,25 @@
 import os
 
-# Use 'r' before the string to handle Windows backslashes correctly
-def process(path, name):
+
+def process(path, name, extensions):
     final = ""
 
-    # os.walk yields a 3-tuple: (current_folder, list_of_subfolders, list_of_files)
     for root, dirs, files in os.walk(path):
-        for file in [f for f in files if ".xml" in f]:
-            
-            # 1. Logic to skip specific files
+        # 1. Filter files based on the passed extensions tuple
+        for file in [f for f in files if f.endswith(extensions)]:
+
+            # Logic to skip specific files
             if file in [".DS_Store"]:
                 continue
-            
-            # 2. Construct the full absolute path
+
+            # Construct the full absolute path
             full_path = os.path.join(root, file)
-            
-            # 3. Construct a relative path (cleaner for reading)
-            # This makes the header "com\gnimble\typewriter\MyFile.java" instead of "C:\Users..."
+
+            # Construct a relative path
             relative_path = os.path.relpath(full_path, path)
 
             try:
-                # 'errors="replace"' prevents crashing if a file has weird characters
+                # 'errors="replace"' prevents crashing on weird characters
                 with open(full_path, "r", encoding="utf-8", errors="replace") as f:
                     content = f.read()
                     final += f"{relative_path}:\n{content}\n\n"
@@ -30,5 +29,17 @@ def process(path, name):
     with open("source-" + name + ".txt", "w", encoding="utf-8") as f:
         f.write(final.strip())
 
-process(r"C:\Users\ethan\Documents\GitHub\Gnimble-Native-Android\app\src\main\java\com\gnimble\typewriter", "typewriter")
-process(r"C:\Users\ethan\Documents\GitHub\Gnimble-Native-Android\app\src\main\res", "res")
+
+# Look for Java and Kotlin files in the typewriter folder
+process(
+    r"C:\Users\ethan\Documents\GitHub\Gnimble-Native-Android\app\src\main\java\com\gnimble\typewriter",
+    "typewriter",
+    (".java", ".kt"),
+)
+
+# Look for XML files in the res folder
+process(
+    r"C:\Users\ethan\Documents\GitHub\Gnimble-Native-Android\app\src\main\res",
+    "res",
+    (".xml",),
+)

@@ -5,9 +5,11 @@ import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.widget.Button
 import android.widget.ImageView
-import android.app.Activity
+// BUG FIX #11: Changed from android.app.Activity to AppCompatActivity
+// Using plain Activity can crash when the app theme expects AppCompatActivity
+import androidx.appcompat.app.AppCompatActivity
 
-class AboutActivity : Activity() {
+class AboutActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_about)
