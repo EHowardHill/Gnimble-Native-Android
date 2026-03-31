@@ -79,10 +79,8 @@ class TypewriterView @JvmOverloads constructor(
     }
 
     // Custom span for justified text (workaround since there's no JustificationSpan)
-    // This uses a standard alignment span but we'll track it differently
     class JustifySpan : AlignmentSpan {
         override fun getAlignment(): Layout.Alignment {
-            // Return normal alignment, we'll handle justification differently
             return Layout.Alignment.ALIGN_NORMAL
         }
     }
@@ -95,34 +93,25 @@ class TypewriterView @JvmOverloads constructor(
         override fun afterTextChanged(s: android.text.Editable?) {
             if (s == null) return
 
-            // Remove the watcher temporarily to avoid infinite loop
             editText.removeTextChangedListener(this)
-
-            // Apply indentation to all paragraphs
             applyParagraphIndents(s)
-
-            // Re-add the watcher
             editText.addTextChangedListener(this)
         }
     }
 
     private fun applyParagraphIndents(spannable: android.text.Editable) {
-        // Remove all existing FirstLineIndentSpan
         val existingIndents = spannable.getSpans(0, spannable.length, FirstLineIndentSpan::class.java)
         existingIndents.forEach { spannable.removeSpan(it) }
 
-        // Find all paragraph starts
         var paragraphStart = 0
         while (paragraphStart < spannable.length) {
-            // Find the end of the current paragraph
             var paragraphEnd = spannable.indexOf('\n', paragraphStart)
             if (paragraphEnd == -1) {
                 paragraphEnd = spannable.length
             } else {
-                paragraphEnd++ // Include the newline character
+                paragraphEnd++
             }
 
-            // Apply indent only if the paragraph has content
             if (paragraphEnd > paragraphStart &&
                 (paragraphEnd == paragraphStart + 1 || spannable[paragraphStart] != '\n')) {
                 spannable.setSpan(
@@ -141,29 +130,20 @@ class TypewriterView @JvmOverloads constructor(
         LEFT, CENTER, RIGHT, JUSTIFY
     }
 
+    // BUG FIX #12: Refactored toggleBold and toggleItalic to handle partial overlap.
+    // When a style span only partially overlaps the selection, the old code removed the
+    // entire span (un-styling text outside the selection). The new code splits partially
+    // overlapping spans so that text outside the selection retains its styling.
+
     fun toggleBold() {
-        val spannable = editText.text as Spannable
-        val selectionStart = editText.selectionStart
-        val selectionEnd = editText.selectionEnd
-
-        if (selectionStart == selectionEnd) return
-
-        val styleSpans = spannable.getSpans(selectionStart, selectionEnd, StyleSpan::class.java)
-        val boldSpans = styleSpans.filter { it.style == android.graphics.Typeface.BOLD }
-
-        if (boldSpans.isNotEmpty()) {
-            boldSpans.forEach { spannable.removeSpan(it) }
-        } else {
-            spannable.setSpan(
-                StyleSpan(android.graphics.Typeface.BOLD),
-                selectionStart,
-                selectionEnd,
-                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-        }
+        toggleStyle(Typeface.BOLD)
     }
 
     fun toggleItalic() {
+        toggleStyle(Typeface.ITALIC)
+    }
+
+    private fun toggleStyle(style: Int) {
         val spannable = editText.text as Spannable
         val selectionStart = editText.selectionStart
         val selectionEnd = editText.selectionEnd
@@ -171,13 +151,41 @@ class TypewriterView @JvmOverloads constructor(
         if (selectionStart == selectionEnd) return
 
         val styleSpans = spannable.getSpans(selectionStart, selectionEnd, StyleSpan::class.java)
-        val italicSpans = styleSpans.filter { it.style == Typeface.ITALIC }
+        val matchingSpans = styleSpans.filter { it.style == style }
 
-        if (italicSpans.isNotEmpty()) {
-            italicSpans.forEach { spannable.removeSpan(it) }
+        if (matchingSpans.isNotEmpty()) {
+            // Remove the style from the selection, but preserve it outside the selection
+            for (span in matchingSpans) {
+                val spanStart = spannable.getSpanStart(span)
+                val spanEnd = spannable.getSpanEnd(span)
+                val spanFlags = spannable.getSpanFlags(span)
+
+                // Remove the original span
+                spannable.removeSpan(span)
+
+                // Re-apply to the portion before the selection (if any)
+                if (spanStart < selectionStart) {
+                    spannable.setSpan(
+                        StyleSpan(style),
+                        spanStart,
+                        selectionStart,
+                        spanFlags
+                    )
+                }
+
+                // Re-apply to the portion after the selection (if any)
+                if (spanEnd > selectionEnd) {
+                    spannable.setSpan(
+                        StyleSpan(style),
+                        selectionEnd,
+                        spanEnd,
+                        spanFlags
+                    )
+                }
+            }
         } else {
             spannable.setSpan(
-                StyleSpan(Typeface.ITALIC),
+                StyleSpan(style),
                 selectionStart,
                 selectionEnd,
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -190,22 +198,18 @@ class TypewriterView @JvmOverloads constructor(
         val selectionStart = editText.selectionStart
         val selectionEnd = editText.selectionEnd
 
-        // Find paragraph boundaries for the selection
         val paragraphBounds = findParagraphBounds(spannable, selectionStart, selectionEnd)
 
         for ((paraStart, paraEnd) in paragraphBounds) {
-            // Remove any existing alignment spans in this paragraph
             val existingAlignmentSpans = spannable.getSpans(paraStart, paraEnd, AlignmentSpan::class.java)
             existingAlignmentSpans.forEach { spannable.removeSpan(it) }
 
-            // Remove any JustifySpan markers
             val existingJustifySpans = spannable.getSpans(paraStart, paraEnd, JustifySpan::class.java)
             existingJustifySpans.forEach { spannable.removeSpan(it) }
 
-            // Apply new alignment span
             when (alignment) {
                 Alignment.LEFT -> {
-                    // LEFT is default, so just removing existing spans is enough
+                    // LEFT is default, removing existing spans is enough
                 }
                 Alignment.CENTER -> {
                     spannable.setSpan(
@@ -224,15 +228,12 @@ class TypewriterView @JvmOverloads constructor(
                     )
                 }
                 Alignment.JUSTIFY -> {
-                    // Since Android doesn't have a JustificationSpan, we'll use a marker
-                    // and handle justification in a custom TextView if needed
                     spannable.setSpan(
                         JustifySpan(),
                         paraStart,
                         paraEnd,
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
                     )
-                    // You could also apply both start alignment and a custom attribute
                     spannable.setSpan(
                         AlignmentSpan.Standard(Layout.Alignment.ALIGN_NORMAL),
                         paraStart,
@@ -244,39 +245,31 @@ class TypewriterView @JvmOverloads constructor(
         }
     }
 
-    // Helper function to find paragraph boundaries
     private fun findParagraphBounds(text: CharSequence, selectionStart: Int, selectionEnd: Int): List<Pair<Int, Int>> {
         val paragraphs = mutableListOf<Pair<Int, Int>>()
 
-        // Find the paragraph containing the selection start
         var paraStart = selectionStart
         while (paraStart > 0 && text[paraStart - 1] != '\n') {
             paraStart--
         }
 
-        // Find all paragraphs in the selection
         var currentStart = paraStart
         while (currentStart <= selectionEnd && currentStart < text.length) {
-            // Find the end of the current paragraph
             var paraEnd = currentStart
             while (paraEnd < text.length && text[paraEnd] != '\n') {
                 paraEnd++
             }
 
-            // Include the newline character in the paragraph if it exists
             if (paraEnd < text.length) {
                 paraEnd++
             }
 
-            // Add this paragraph if it's within our selection
             if (currentStart < selectionEnd || selectionStart == selectionEnd) {
                 paragraphs.add(Pair(currentStart, paraEnd))
             }
 
-            // Move to the next paragraph
             currentStart = paraEnd
 
-            // If we've passed the selection end, we're done
             if (currentStart > selectionEnd && selectionStart != selectionEnd) {
                 break
             }
@@ -288,7 +281,7 @@ class TypewriterView @JvmOverloads constructor(
     // Custom TypefaceSpan to support custom fonts
     class CustomTypefaceSpan(
         val customTypeface: Typeface,
-        val resourceId: Int  // Add this to store the font resource ID
+        val resourceId: Int
     ) : TypefaceSpan("") {
 
         override fun updateDrawState(textPaint: android.text.TextPaint) {
@@ -319,15 +312,13 @@ class TypewriterView @JvmOverloads constructor(
     fun setGlobalFont(fontItem: FontItem) {
         currentFont = fontItem
 
-        // Apply to the entire EditText
         if (fontItem.resourceId == 0) {
             editText.typeface = Typeface.DEFAULT
         } else {
             editText.typeface = fontItem.typeface
         }
 
-        // CLEANUP: Remove any legacy CustomTypefaceSpans if they exist
-        // (This cleans up old documents that might have had mixed fonts)
+        // CLEANUP: Remove any legacy CustomTypefaceSpans
         val spannable = editText.text as Spannable
         val spans = spannable.getSpans(0, spannable.length, CustomTypefaceSpan::class.java)
         spans.forEach { spannable.removeSpan(it) }
@@ -339,11 +330,9 @@ class TypewriterView @JvmOverloads constructor(
         val end = editText.selectionEnd
 
         if (start != end) {
-            // Remove existing RelativeSizeSpan in selection
             val existingSpans = spannable.getSpans(start, end, RelativeSizeSpan::class.java)
             existingSpans.forEach { spannable.removeSpan(it) }
 
-            // Apply new size
             if (headingStyle.sizeFactor != 1.0f) {
                 spannable.setSpan(
                     RelativeSizeSpan(headingStyle.sizeFactor),
@@ -364,10 +353,8 @@ class TypewriterView @JvmOverloads constructor(
             drawable?.let {
                 val intrinsicWidth = it.intrinsicWidth
                 val intrinsicHeight = it.intrinsicHeight
-                // Account for padding and indentation when calculating max width
                 val maxWidth = editText.width - editText.paddingLeft - editText.paddingRight - tabIndentPixels
 
-                // Scale image if needed
                 if (intrinsicWidth > maxWidth) {
                     val scale = maxWidth.toFloat() / intrinsicWidth.toFloat()
                     val scaledHeight = (intrinsicHeight * scale).toInt()
@@ -379,10 +366,8 @@ class TypewriterView @JvmOverloads constructor(
                 val cursorPosition = editText.selectionStart
                 val editable = editText.text
 
-                // Insert newline, image placeholder, and another newline
                 editable.insert(cursorPosition, "\n \n")
 
-                // Apply image span to the space character
                 editable.setSpan(
                     android.text.style.ImageSpan(it, android.text.style.ImageSpan.ALIGN_BASELINE),
                     cursorPosition + 1,
@@ -390,7 +375,6 @@ class TypewriterView @JvmOverloads constructor(
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
 
-                // Move cursor after the image
                 editText.setSelection(cursorPosition + 3)
             }
         } catch (e: Exception) {
@@ -398,25 +382,20 @@ class TypewriterView @JvmOverloads constructor(
         }
     }
 
-    // Call this when loading content to ensure indents are applied
     fun setContent(content: CharSequence) {
         editText.setText(content, TextView.BufferType.SPANNABLE)
-        // Force apply indents after setting content
         applyParagraphIndents(editText.text)
     }
 
-    // Optional: Get the current alignment of the paragraph at cursor position
     fun getCurrentAlignment(): Alignment {
         val spannable = editText.text as Spannable
         val cursorPos = editText.selectionStart
 
-        // Find paragraph bounds
         var paraStart = cursorPos
         while (paraStart > 0 && spannable[paraStart - 1] != '\n') {
             paraStart--
         }
 
-        // Check for alignment spans
         val alignmentSpans = spannable.getSpans(paraStart, cursorPos, AlignmentSpan::class.java)
         if (alignmentSpans.isNotEmpty()) {
             val span = alignmentSpans[0]

@@ -2,8 +2,8 @@ package com.gnimble.typewriter
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.View
 import android.provider.Settings
+import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -27,13 +27,9 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Previous BottomAppBar logic removed as the view was removed from XML.
-        // The navigation listener for AboutActivity is currently disconnected
-        // because the navigation icon is gone.
-
         setupRecyclerView()
         observeBooks()
-        setupFabs() // Renamed to plural as we now handle 3 buttons
+        setupFabs()
     }
 
     private fun setupRecyclerView() {
@@ -59,7 +55,6 @@ class MainActivity : AppCompatActivity() {
         viewModel.allBooks.observe(this) { books ->
             bookAdapter.submitList(books)
 
-            // Show/hide empty view
             if (books.isEmpty()) {
                 binding.emptyView.visibility = View.VISIBLE
                 binding.booksRecyclerView.visibility = View.GONE
@@ -82,10 +77,8 @@ class MainActivity : AppCompatActivity() {
             showNewBookDialog()
         }
 
-        // 3. Settings Button (Right)
+        // Opens Android system settings — intentional since Gnimble is used as a launcher.
         binding.fabSettings.setOnClickListener {
-            // Note: This opens Android System settings.
-            // If you create a specific SettingsActivity later, change this class reference.
             val intent = Intent(Settings.ACTION_SETTINGS)
             startActivity(intent)
         }
@@ -119,7 +112,6 @@ class MainActivity : AppCompatActivity() {
             .apply {
                 show()
 
-                // Validate input on the fly
                 getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
 
                 titleInput.addTextChangedListener(object : android.text.TextWatcher {
@@ -143,7 +135,6 @@ class MainActivity : AppCompatActivity() {
         )
 
         viewModel.insert(newBook) { bookId ->
-            // Open the newly created book
             runOnUiThread {
                 val intent = Intent(this, EditorActivity::class.java).apply {
                     putExtra("book_id", bookId)
@@ -163,15 +154,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renameBook(book: Book, newTitle: String) {
-        // Create a copy of the book with the new title
         val updatedBook = book.copy(title = newTitle)
-
-        // Update the book in the database
         viewModel.update(updatedBook)
     }
 
     private fun deleteBook(book: Book) {
-        // Delete the book from the database
         viewModel.delete(book)
     }
 }

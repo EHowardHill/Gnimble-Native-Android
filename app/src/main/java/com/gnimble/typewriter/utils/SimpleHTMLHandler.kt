@@ -29,7 +29,6 @@ class SimpleHtmlHandler(private val context: Context) {
 
         fontItems.add(FontItem("Default", "default", 0, Typeface.DEFAULT))
 
-        // Get all font resources dynamically
         val fontFields = R.font::class.java.fields
 
         for (field in fontFields) {
@@ -78,7 +77,6 @@ class SimpleHtmlHandler(private val context: Context) {
         var paragraphStart = 0
 
         for (i in 0 until text.length) {
-            // Paragraph handling...
             if (i == 0 || (i > 0 && text[i - 1] == '\n')) {
                 paragraphStart = i
                 val currentParagraphIndented = allSpans.any { spanInfo ->
@@ -169,18 +167,9 @@ class SimpleHtmlHandler(private val context: Context) {
     }
 
     fun htmlToSpannable(html: String): Spannable {
-        // BUG FIX #10: Use a position-tracking parser instead of text-content matching.
-        // The old approach searched for plain text content in the spannable which would
-        // match the WRONG occurrence when the same text appears multiple times.
-        //
-        // New approach: We use unique marker characters to track where custom-styled
-        // regions begin and end, then apply spans at the correct positions.
-
         val customStyles = parseCustomStylesInfo(html)
 
-        // Generate unique markers for each custom style region
-        // We use Unicode private use area characters that won't appear in real text
-        val markerMap = mutableMapOf<String, CustomStyleInfo>() // marker -> style info
+        var markerMap = mutableMapOf<String, CustomStyleInfo>()
         var modifiedHtml = html
         var markerIndex = 0
 
@@ -189,12 +178,9 @@ class SimpleHtmlHandler(private val context: Context) {
             val endMarker = "\uE002${markerIndex}\uE003"
             markerIndex++
 
-            // Replace the first occurrence of this exact start tag + content + end tag
-            // with marker-wrapped content (without the custom attributes)
             val fullOriginal = style.startTag + style.content + style.endTag
             val replacement = startMarker + style.content + endMarker
 
-            // Only replace the first occurrence to handle duplicates correctly
             val idx = modifiedHtml.indexOf(fullOriginal)
             if (idx != -1) {
                 modifiedHtml = modifiedHtml.substring(0, idx) + replacement + modifiedHtml.substring(idx + fullOriginal.length)
@@ -202,7 +188,21 @@ class SimpleHtmlHandler(private val context: Context) {
             }
         }
 
-        // Remove remaining custom data attributes so Html.fromHtml doesn't choke
+        // BUG FIX #1: Also mark indented paragraphs with markers so we can restore
+        // them at exact positions instead of using text-content matching.
+        data class IndentMarker(val markerIdx: Int)
+        val indentMarkerMap = mutableMapOf<Int, Boolean>()
+        val indentPattern = Regex("""<p\s+class="indented-paragraph">""")
+
+        // Replace indented paragraph tags with marked versions
+        var indentIdx = markerIndex + 1000 // Offset to avoid collision with style markers
+        modifiedHtml = indentPattern.replace(modifiedHtml) { _ ->
+            val startMarker = "\uE000INDENT${indentIdx}\uE001"
+            indentMarkerMap[indentIdx] = true
+            indentIdx++
+            "<p>$startMarker"
+        }
+
         modifiedHtml = removeCustomAttributes(modifiedHtml)
 
         val imageGetter = Html.ImageGetter { source ->
@@ -236,12 +236,11 @@ class SimpleHtmlHandler(private val context: Context) {
         // Now find markers in the resulting spannable and apply custom styles at exact positions
         val text = spannableBuilder.toString()
 
-        // Process markers in reverse order to avoid position shifts when removing markers
         data class MarkerLocation(val markerIdx: String, val startMarkerPos: Int, val startMarkerEnd: Int, val endMarkerPos: Int, val endMarkerEnd: Int)
         val markerLocations = mutableListOf<MarkerLocation>()
 
         for ((mIdx, _) in markerMap) {
-            val actualIdx = mIdx.toInt() - 1 // markerIndex was post-incremented
+            val actualIdx = mIdx.toInt() - 1
             val startMarker = "\uE000${actualIdx}\uE001"
             val endMarker = "\uE002${actualIdx}\uE003"
 
@@ -256,24 +255,34 @@ class SimpleHtmlHandler(private val context: Context) {
             markerLocations.add(MarkerLocation(mIdx, startPos, startEnd, endPos, endEnd))
         }
 
-        // Sort by position descending so we can safely remove markers without invalidating positions
-        markerLocations.sortByDescending { it.startMarkerPos }
+        // Also collect indent marker locations
+        data class IndentLocation(val markerIdx: Int, val markerPos: Int, val markerEnd: Int)
+        val indentLocations = mutableListOf<IndentLocation>()
 
+        for ((iIdx, _) in indentMarkerMap) {
+            val marker = "\uE000INDENT${iIdx}\uE001"
+            val pos = spannableBuilder.toString().indexOf(marker)
+            if (pos != -1) {
+                indentLocations.add(IndentLocation(iIdx, pos, pos + marker.length))
+            }
+        }
+
+        // Sort all removals by position descending for safe deletion
+        markerLocations.sortByDescending { it.startMarkerPos }
+        indentLocations.sortByDescending { it.markerPos }
+
+        // Process style markers
         for (loc in markerLocations) {
             val style = markerMap[loc.markerIdx] ?: continue
 
-            // Remove end marker first (it's after start marker)
             spannableBuilder.delete(loc.endMarkerPos, loc.endMarkerEnd)
-            // Remove start marker
             spannableBuilder.delete(loc.startMarkerPos, loc.startMarkerEnd)
 
-            // Calculate the content position after marker removal
             val contentStart = loc.startMarkerPos
             val contentEnd = loc.endMarkerPos - (loc.startMarkerEnd - loc.startMarkerPos)
 
             if (contentStart >= contentEnd || contentStart < 0 || contentEnd > spannableBuilder.length) continue
 
-            // Apply the custom style
             when (style.type) {
                 "font-resource" -> {
                     val resourceId = style.value.toIntOrNull()
@@ -315,8 +324,40 @@ class SimpleHtmlHandler(private val context: Context) {
             }
         }
 
-        // Restore paragraph indentation
-        restoreParagraphIndentation(html, spannableBuilder)
+        // BUG FIX #1: Process indent markers — apply indentation at exact marker positions
+        // instead of searching by text content (which matches the wrong paragraph when
+        // multiple paragraphs have identical text).
+        val tabIndentPixels = (0.25f * context.resources.displayMetrics.densityDpi).toInt()
+
+        for (loc in indentLocations) {
+            // Remove the marker characters
+            // Re-find marker position since earlier deletions may have shifted positions
+            val currentText = spannableBuilder.toString()
+            val marker = "\uE000INDENT${loc.markerIdx}\uE001"
+            val pos = currentText.indexOf(marker)
+            if (pos == -1) continue
+
+            spannableBuilder.delete(pos, pos + marker.length)
+
+            // Find the paragraph boundaries around this position
+            val paraStart = pos
+            val updatedText = spannableBuilder.toString()
+            var paraEnd = updatedText.indexOf('\n', paraStart)
+            if (paraEnd == -1) {
+                paraEnd = spannableBuilder.length
+            } else {
+                paraEnd++ // Include the newline
+            }
+
+            if (paraEnd > paraStart) {
+                spannableBuilder.setSpan(
+                    TypewriterView.FirstLineIndentSpan(tabIndentPixels),
+                    paraStart,
+                    paraEnd,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
+                )
+            }
+        }
 
         return spannableBuilder
     }
@@ -332,7 +373,6 @@ class SimpleHtmlHandler(private val context: Context) {
     private fun parseCustomStylesInfo(html: String): List<CustomStyleInfo> {
         val styles = mutableListOf<CustomStyleInfo>()
 
-        // Parse font resource IDs
         val fontPattern = Regex("""(<span\s+data-font-resource-id="(\d+)"[^>]*>)(.*?)(</span>)""", RegexOption.DOT_MATCHES_ALL)
         fontPattern.findAll(html).forEach { match ->
             styles.add(CustomStyleInfo(
@@ -344,7 +384,6 @@ class SimpleHtmlHandler(private val context: Context) {
             ))
         }
 
-        // Parse alignments
         val alignmentPattern = Regex("""(<span\s+data-alignment="(\w+)"[^>]*>)(.*?)(</span>)""", RegexOption.DOT_MATCHES_ALL)
         alignmentPattern.findAll(html).forEach { match ->
             styles.add(CustomStyleInfo(
@@ -356,7 +395,6 @@ class SimpleHtmlHandler(private val context: Context) {
             ))
         }
 
-        // Parse font-size
         val fontSizePattern = Regex("""(<span\s+[^>]*?data-font-size="([\d.]+)"[^>]*>)(.*?)(</span>)""", RegexOption.DOT_MATCHES_ALL)
         fontSizePattern.findAll(html).forEach { match ->
             styles.add(CustomStyleInfo(
@@ -373,54 +411,11 @@ class SimpleHtmlHandler(private val context: Context) {
 
     private fun removeCustomAttributes(html: String): String {
         var result = html
-        // Remove custom data attributes but keep the span tags
         result = result.replace(Regex("""\s+data-font-resource-id="\d+""""), "")
         result = result.replace(Regex("""\s+data-font-name="[^"]*""""), "")
         result = result.replace(Regex("""\s+data-alignment="\w+""""), "")
         result = result.replace(Regex("""\s+data-font-size="[\d.]*""""), "")
         return result
-    }
-
-    private fun restoreParagraphIndentation(html: String, spannable: SpannableStringBuilder) {
-        // Calculate tab indent (1/4 inch in pixels)
-        val tabIndentPixels = (0.25f * context.resources.displayMetrics.densityDpi).toInt()
-
-        // Find all indented paragraphs
-        val indentedParagraphPattern = Regex("""<p\s+class="indented-paragraph">(.*?)</p>""", RegexOption.DOT_MATCHES_ALL)
-
-        indentedParagraphPattern.findAll(html).forEach { matchResult ->
-            val content = matchResult.groupValues[1]
-            // Remove any nested HTML tags to get plain text
-            val plainContent = content.replace(Regex("<[^>]+>"), "")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&amp;", "&")
-                .replace("&quot;", "\"")
-
-            // Find this paragraph in the spannable
-            var searchStart = 0
-            while (searchStart < spannable.length) {
-                val startIndex = spannable.toString().indexOf(plainContent, searchStart)
-                if (startIndex == -1) break
-
-                // Find the end of this paragraph (next newline or end of text)
-                var endIndex = spannable.toString().indexOf('\n', startIndex)
-                if (endIndex == -1) {
-                    endIndex = spannable.length
-                } else {
-                    endIndex++ // Include the newline
-                }
-
-                // Apply FirstLineIndentSpan
-                spannable.setSpan(
-                    TypewriterView.FirstLineIndentSpan(tabIndentPixels),
-                    startIndex,
-                    endIndex,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE or Spannable.SPAN_PARAGRAPH
-                )
-                break
-            }
-        }
     }
 
     private fun drawableToBase64(drawable: Drawable): String {

@@ -33,6 +33,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import java.net.ServerSocket
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -41,12 +42,18 @@ class UploadActivity : AppCompatActivity() {
     private lateinit var binding: ActivityUploadBinding
     private lateinit var mainViewModel: MainViewModel
     private var webServer: UploadWebServer? = null
-    private val PORT = 8889 // Different port from ShareActivity
+    // BUG FIX #14: Use dynamic port finding instead of hardcoded port.
+    // The old hardcoded 8889 would fail silently if another app (or ShareActivity)
+    // was already using that port.
+    private var serverPort: Int = 0
     private val PERMISSION_REQUEST_CODE = 1001
 
     companion object {
         private const val TAG = "UploadActivity"
         private const val MAX_UPLOAD_SIZE = 50 * 1024 * 1024 // 50MB max file size
+        private const val PREFERRED_PORT = 8889
+        private const val PORT_RANGE_START = 8889
+        private const val PORT_RANGE_END = 8899
 
         // Supported document extensions
         private val DOCUMENT_EXTENSIONS = setOf("txt", "rtf", "html", "htm")
@@ -86,11 +93,36 @@ class UploadActivity : AppCompatActivity() {
         }
     }
 
+    // BUG FIX #14: Find an available port instead of using a hardcoded one.
+    private fun findAvailablePort(): Int {
+        // Try the preferred port first
+        for (port in PORT_RANGE_START..PORT_RANGE_END) {
+            try {
+                ServerSocket(port).use {
+                    return port
+                }
+            } catch (e: Exception) {
+                // Port is in use, try next
+            }
+        }
+        // Fallback: let the OS assign a random available port
+        try {
+            ServerSocket(0).use {
+                return it.localPort
+            }
+        } catch (e: Exception) {
+            throw RuntimeException("No available ports found", e)
+        }
+    }
+
     private fun startUploadServer() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val ipAddress = getLocalIpAddress()
-                val serverUrl = "http://$ipAddress:$PORT"
+
+                // BUG FIX #14: Find an available port dynamically
+                serverPort = findAvailablePort()
+                val serverUrl = "http://$ipAddress:$serverPort"
 
                 // Create uploads directory
                 val uploadsDir = getUploadsDirectory()
@@ -99,7 +131,7 @@ class UploadActivity : AppCompatActivity() {
                 }
 
                 // Create and start the server
-                webServer = UploadWebServer(PORT, uploadsDir, this@UploadActivity)
+                webServer = UploadWebServer(serverPort, uploadsDir, this@UploadActivity)
                 webServer?.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
 
                 withContext(Dispatchers.Main) {
@@ -126,7 +158,6 @@ class UploadActivity : AppCompatActivity() {
     }
 
     private fun getUploadsDirectory(): File {
-        // Use app-specific external storage directory
         val externalDir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
         return File(externalDir, "Uploads").apply {
             if (!exists()) {
@@ -149,22 +180,17 @@ class UploadActivity : AppCompatActivity() {
 
     // Convert RTF to plain text (basic implementation)
     private fun convertRtfToPlainText(rtfContent: String): String {
-        // Basic RTF to plain text conversion
-        // This is a simplified version - for production, consider using a proper RTF parser
         var text = rtfContent
 
-        // Remove RTF header and footer
         val startIndex = text.indexOf("{\\rtf")
         val endIndex = text.lastIndexOf("}")
         if (startIndex >= 0 && endIndex > startIndex) {
             text = text.substring(startIndex, endIndex + 1)
         }
 
-        // Remove RTF control words and groups
         text = text.replace(Regex("\\\\[a-z]+(-?\\d+)?[ ]?"), "")
         text = text.replace(Regex("[{}]"), "")
 
-        // Convert special characters
         text = text.replace("\\'92", "'")
         text = text.replace("\\'93", "\u201C")
         text = text.replace("\\'94", "\u201D")
@@ -173,7 +199,6 @@ class UploadActivity : AppCompatActivity() {
         text = text.replace("\\line", "\n")
         text = text.replace("\\par", "\n\n")
 
-        // Clean up extra whitespace
         text = text.replace(Regex("\\s+"), " ")
         text = text.replace(Regex("\n{3,}"), "\n\n")
 
@@ -185,6 +210,19 @@ class UploadActivity : AppCompatActivity() {
         val titleRegex = Regex("<title>(.*?)</title>", RegexOption.IGNORE_CASE)
         val match = titleRegex.find(htmlContent)
         return match?.groupValues?.get(1)?.trim()
+    }
+
+    // BUG FIX #11: Sanitize title using Unicode-aware logic instead of stripping
+    // non-ASCII characters. The old regex [^a-zA-Z0-9\\s-] removed accented characters,
+    // CJK characters, emoji, and other valid Unicode — turning "café_notes.txt" into
+    // "caf notes" and Chinese filenames into "Untitled Book".
+    private fun sanitizeTitle(rawTitle: String): String {
+        // Remove only characters that are genuinely problematic for display/storage:
+        // control characters, and path separators
+        val cleaned = rawTitle
+            .replace(Regex("[\\p{Cc}\\p{Cf}/\\\\]"), "") // control chars + path separators
+            .trim()
+        return cleaned.ifEmpty { "Untitled Book" }
     }
 
     // Create a book from document content
@@ -200,19 +238,15 @@ class UploadActivity : AppCompatActivity() {
 
         when (extension) {
             "txt" -> {
-                // For TXT files, try to extract title from first line
                 val lines = content.lines()
                 if (lines.isNotEmpty() && lines[0].length < 100) {
-                    // Use first line as title if it's not too long
                     title = lines[0].trim()
                     bookContent = lines.drop(1).joinToString("\n").trim()
                 }
             }
             "rtf" -> {
-                // Convert RTF to plain text
                 bookContent = convertRtfToPlainText(content)
 
-                // Try to extract title from first line
                 val lines = bookContent.lines()
                 if (lines.isNotEmpty() && lines[0].length < 100) {
                     title = lines[0].trim()
@@ -220,28 +254,22 @@ class UploadActivity : AppCompatActivity() {
                 }
             }
             "html", "htm" -> {
-                // For HTML files, preserve the formatting
                 format = ContentFormat.HTML
                 formattedContent = content
 
-                // Extract plain text for storyContent (backward compatibility)
                 bookContent = content
-                    .replace(Regex("<[^>]+>"), "") // Remove HTML tags
-                    .replace(Regex("\\s+"), " ") // Normalize whitespace
+                    .replace(Regex("<[^>]+>"), "")
+                    .replace(Regex("\\s+"), " ")
                     .trim()
 
-                // Try to extract title from HTML
                 extractTitleFromHtml(content)?.let {
                     title = it
                 }
             }
         }
 
-        // Clean up the title
-        title = title.replace(Regex("[^a-zA-Z0-9\\s-]"), "").trim()
-        if (title.isEmpty()) {
-            title = "Untitled Book"
-        }
+        // BUG FIX #11: Use Unicode-safe title sanitization
+        title = sanitizeTitle(title)
 
         return Book(
             title = title,
@@ -319,15 +347,10 @@ class UploadActivity : AppCompatActivity() {
                 val uploadedFileNames = mutableListOf<String>()
                 val createdBooks = mutableListOf<String>()
 
-                // BUG FIX #8: NanoHTTPD stores multiple files under indexed keys.
-                // For multiple files uploaded with the same field name "file",
-                // NanoHTTPD stores temp paths as "file", "file1", "file2", etc.
-                // and the corresponding original filenames are in session.parameters["file"] as a list.
                 val fileNames = session.parameters["file"] ?: emptyList()
 
                 for (index in fileNames.indices) {
                     val fileName = fileNames[index]
-                    // NanoHTTPD keys: first file is "file", subsequent are "file1", "file2", etc.
                     val tempFileKey = if (index == 0) "file" else "file$index"
                     val tempFilePath = files[tempFileKey] ?: continue
 
@@ -337,7 +360,6 @@ class UploadActivity : AppCompatActivity() {
                     try {
                         when {
                             isImageFile(fileName) -> {
-                                // Handle image files
                                 val savedFileName = saveImageToMediaStore(tempFile, fileName)
                                 if (savedFileName != null) {
                                     uploadedFileNames.add(savedFileName)
@@ -347,20 +369,14 @@ class UploadActivity : AppCompatActivity() {
                                 }
                             }
                             isDocumentFile(fileName) -> {
-                                // Handle document files
-                                // Read the file content immediately before it gets deleted
                                 val content = tempFile.readText()
                                 val extension = getFileExtension(fileName)
 
-                                // BUG FIX #9: Use runBlocking on the server thread instead of
-                                // launching a fire-and-forget coroutine + Thread.sleep.
-                                // This ensures the book is fully created before we respond.
                                 try {
                                     val book = runBlocking {
                                         createBookFromDocument(fileName, content, extension)
                                     }
 
-                                    // Insert book into database synchronously (from server thread perspective)
                                     runBlocking {
                                         withContext(Dispatchers.IO) {
                                             val db = com.gnimble.typewriter.data.AppDatabase.getDatabase(activity)
@@ -392,7 +408,6 @@ class UploadActivity : AppCompatActivity() {
                             }
                         }
                     } finally {
-                        // Delete the temp file
                         tempFile.delete()
                     }
                 }
@@ -402,7 +417,6 @@ class UploadActivity : AppCompatActivity() {
                     throw Exception("No files were processed successfully.")
                 }
 
-                // Return JSON response
                 val jsonResponse = """
                     {
                         "success": true,
@@ -422,7 +436,7 @@ class UploadActivity : AppCompatActivity() {
         }
 
         private fun serveStatus(): Response {
-            val freeSpace = uploadsDir.freeSpace / (1024 * 1024) // MB
+            val freeSpace = uploadsDir.freeSpace / (1024 * 1024)
             val fileCount = uploadsDir.listFiles()?.size ?: 0
 
             val statusJson = """
@@ -567,7 +581,7 @@ class UploadActivity : AppCompatActivity() {
 </head>
 <body>
     <div class="container">
-        <h1>📤 Upload Files</h1>
+        <h1>Upload Files</h1>
         <p class="subtitle">Send files to Gnimble Typewriter</p>
         <div class="file-types">
             <h3>Supported file types:</h3>
@@ -638,7 +652,6 @@ class UploadActivity : AppCompatActivity() {
             fileList.innerHTML = '';
             selectedFiles.forEach((file, index) => {
                 const fileType = getFileType(file.name);
-                // NOTE: The dollar signs below are escaped for Kotlin using ${'$'}
                 const item = document.createElement('div');
                 item.className = 'file-item';
                 item.innerHTML = `
@@ -743,7 +756,6 @@ class UploadActivity : AppCompatActivity() {
         }
     }
 
-    // BUG FIX #7: Null-safe IP address handling and proper 172.16-31 private range check
     private fun isPrivateIpAddress(addr: String): Boolean {
         return addr.startsWith("192.168.") ||
                 addr.startsWith("10.") ||
@@ -773,7 +785,6 @@ class UploadActivity : AppCompatActivity() {
                 }
             }
 
-            // Fallback: try to get WiFi IP specifically
             val wifiInterface = NetworkInterface.getByName("wlan0")
             if (wifiInterface != null && wifiInterface.isUp) {
                 val addresses = Collections.list(wifiInterface.inetAddresses)

@@ -19,10 +19,13 @@ import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import java.net.ServerSocket
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -30,13 +33,22 @@ class ShareActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityShareBinding
     private var webServer: BookWebServer? = null
-    private val PORT = 8888
+    // BUG FIX #14: Use dynamic port finding instead of hardcoded port
+    private var serverPort: Int = 0
     private var bookId: Long = -1
 
     private val database by lazy { AppDatabase.getDatabase(this) }
 
     companion object {
         private const val TAG = "ShareActivity"
+        private const val PREFERRED_PORT = 8888
+        private const val PORT_RANGE_START = 8888
+        private const val PORT_RANGE_END = 8898
+
+        // BUG FIX #5: Shared mutex to synchronize database writes between the web
+        // server and the app's auto-save. Without this, concurrent writes can cause
+        // one side's edits to silently overwrite the other's.
+        val dbWriteMutex = Mutex()
 
         // Font mapping between local resources and Google Fonts
         val FONT_MAPPINGS = mapOf(
@@ -77,6 +89,27 @@ class ShareActivity : AppCompatActivity() {
         }
     }
 
+    // BUG FIX #14: Find an available port dynamically
+    private fun findAvailablePort(): Int {
+        for (port in PORT_RANGE_START..PORT_RANGE_END) {
+            try {
+                ServerSocket(port).use {
+                    return port
+                }
+            } catch (e: Exception) {
+                // Port in use, try next
+            }
+        }
+        // Fallback: OS-assigned port
+        try {
+            ServerSocket(0).use {
+                return it.localPort
+            }
+        } catch (e: Exception) {
+            throw RuntimeException("No available ports found", e)
+        }
+    }
+
     private fun startServer() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -90,9 +123,12 @@ class ShareActivity : AppCompatActivity() {
                 }
 
                 val ipAddress = getLocalIpAddress()
-                val serverUrl = "http://$ipAddress:$PORT"
 
-                webServer = BookWebServer(PORT, bookId, database, this@ShareActivity)
+                // BUG FIX #14: Find available port
+                serverPort = findAvailablePort()
+                val serverUrl = "http://$ipAddress:$serverPort"
+
+                webServer = BookWebServer(serverPort, bookId, database, this@ShareActivity)
                 webServer?.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
 
                 withContext(Dispatchers.Main) {
@@ -149,12 +185,16 @@ class ShareActivity : AppCompatActivity() {
         // ── GET /api/content ────────────────────────────────────────────
 
         private fun serveBookContent(): Response {
-            val book = runBlocking { database.bookDao().getBook(bookId) }
-                ?: return newFixedLengthResponse(
-                    Response.Status.NOT_FOUND,
-                    "application/json",
-                    """{"success":false,"message":"Book not found"}"""
-                )
+            // BUG FIX #5: Acquire mutex for read to ensure we don't read mid-write
+            val book = runBlocking {
+                dbWriteMutex.withLock {
+                    database.bookDao().getBook(bookId)
+                }
+            } ?: return newFixedLengthResponse(
+                Response.Status.NOT_FOUND,
+                "application/json",
+                """{"success":false,"message":"Book not found"}"""
+            )
 
             val bodyContent = when (book.contentFormat) {
                 ContentFormat.HTML -> {
@@ -211,19 +251,24 @@ class ShareActivity : AppCompatActivity() {
                 .trim()
 
             try {
+                // BUG FIX #5: Acquire the shared mutex before writing to the database.
+                // This prevents the app's auto-save (in EditorActivity) from running
+                // concurrently and overwriting the browser's changes, or vice versa.
                 runBlocking {
-                    val book = database.bookDao().getBook(bookId) ?: return@runBlocking
+                    dbWriteMutex.withLock {
+                        val book = database.bookDao().getBook(bookId) ?: return@withLock
 
-                    val updatedBook = book.copy(
-                        title = if (newTitle.isNotEmpty()) newTitle else book.title,
-                        formattedContent = fullHtml,
-                        contentFormat = ContentFormat.HTML,
-                        storyContent = plainText.take(500),
-                        lastEdited = Date(),
-                        subtitle = "Last edited: ${SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date())}",
-                        fontName = newFontName
-                    )
-                    database.bookDao().updateBook(updatedBook)
+                        val updatedBook = book.copy(
+                            title = if (newTitle.isNotEmpty()) newTitle else book.title,
+                            formattedContent = fullHtml,
+                            contentFormat = ContentFormat.HTML,
+                            storyContent = plainText.take(500),
+                            lastEdited = Date(),
+                            subtitle = "Last edited: ${SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date())}",
+                            fontName = newFontName
+                        )
+                        database.bookDao().updateBook(updatedBook)
+                    }
                 }
 
                 activity.runOnUiThread {
@@ -248,12 +293,15 @@ class ShareActivity : AppCompatActivity() {
         // ── GET / — the WYSIWYG editor page ─────────────────────────────
 
         private fun serveEditorPage(): Response {
-            val book = runBlocking { database.bookDao().getBook(bookId) }
-                ?: return newFixedLengthResponse(
-                    Response.Status.NOT_FOUND,
-                    "text/html",
-                    "<h1>Book not found</h1>"
-                )
+            val book = runBlocking {
+                dbWriteMutex.withLock {
+                    database.bookDao().getBook(bookId)
+                }
+            } ?: return newFixedLengthResponse(
+                Response.Status.NOT_FOUND,
+                "text/html",
+                "<h1>Book not found</h1>"
+            )
 
             // Build all Google Font <link> tags
             val allFontLinks = FONT_MAPPINGS.values
@@ -293,7 +341,6 @@ class ShareActivity : AppCompatActivity() {
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        /* ── LIGHT THEME (Word 2016 default) ─────────────── */
         :root, [data-theme="light"] {
             --title-bar-bg: #2b579a;
             --title-bar-text: #ffffff;
@@ -330,7 +377,6 @@ class ShareActivity : AppCompatActivity() {
             --theme-toggle-hover: rgba(255,255,255,0.15);
         }
 
-        /* ── DARK THEME (Word 2016 Dark Gray) ────────────── */
         [data-theme="dark"] {
             --title-bar-bg: #1f1f1f;
             --title-bar-text: #d4d4d4;
@@ -375,10 +421,8 @@ class ShareActivity : AppCompatActivity() {
             font-size: 14px;
         }
 
-        /* ── LAYOUT ─────────────────────────────────────────── */
         .app-shell { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 
-        /* ── TITLE BAR (Word 2016 blue top) ──────────────── */
         .title-bar {
             display: flex; align-items: center; gap: 8px;
             padding: 4px 12px; background: var(--title-bar-bg); color: var(--title-bar-text);
@@ -411,7 +455,6 @@ class ShareActivity : AppCompatActivity() {
         }
         .btn-theme:hover { background: var(--theme-toggle-hover); }
 
-        /* ── QUICK ACCESS TOOLBAR ────────────────────────── */
         .quick-access {
             display: flex; align-items: center; gap: 1px;
             padding: 2px 8px; background: var(--title-bar-bg);
@@ -426,7 +469,6 @@ class ShareActivity : AppCompatActivity() {
         .quick-access .qa-btn:hover { background: rgba(255,255,255,0.15); opacity: 1; }
         .quick-access .qa-btn svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-        /* ── RIBBON TOOLBAR (Word 2016 style) ────────────── */
         .ribbon {
             display: flex; align-items: stretch;
             padding: 4px 8px 18px; background: var(--ribbon-bg);
@@ -466,7 +508,6 @@ class ShareActivity : AppCompatActivity() {
         .ribbon select:focus { border-color: var(--accent); }
         .ribbon select:hover { border-color: #999; }
 
-        /* ── EDITOR AREA ────────────────────────────────────── */
         .editor-wrap {
             flex: 1; overflow-y: auto; padding: 24px 16px 60px;
             display: flex; justify-content: center; background: var(--page-bg);
@@ -482,7 +523,6 @@ class ShareActivity : AppCompatActivity() {
         }
         .editor-page:focus { box-shadow: 0 1px 3px var(--page-shadow), 0 4px 12px var(--page-shadow); }
 
-        /* Content formatting inside editor */
         .editor-page p { margin-bottom: 8pt; }
         .editor-page p.indented-paragraph { text-indent: 0.5in; }
         .editor-page .align-center { text-align: center; }
@@ -491,7 +531,6 @@ class ShareActivity : AppCompatActivity() {
         .editor-page .small-text { font-size: 0.85em; }
         $fontFamilyCssRules
 
-        /* ── STATUS BAR (Word 2016 blue bottom bar) ──────── */
         .status-bar {
             display: flex; align-items: center; justify-content: space-between;
             padding: 2px 12px; background: var(--status-bg); color: var(--status-text);
@@ -500,7 +539,6 @@ class ShareActivity : AppCompatActivity() {
         .status-bar-left { display: flex; align-items: center; gap: 16px; }
         .status-bar-right { display: flex; align-items: center; gap: 8px; }
 
-        /* ── SAVE BUTTON (in title bar) ──────────────────── */
         .btn-save {
             display: inline-flex; align-items: center; gap: 4px;
             padding: 3px 12px; background: var(--btn-save-bg); color: var(--btn-save-text);
@@ -521,7 +559,6 @@ class ShareActivity : AppCompatActivity() {
         }
         .btn-readonly:hover { background: rgba(255,255,255,0.1); }
 
-        /* ── TOAST ───────────────────────────────────────────── */
         .toast {
             position: fixed; bottom: 36px; left: 50%;
             transform: translateX(-50%) translateY(60px);
@@ -533,7 +570,6 @@ class ShareActivity : AppCompatActivity() {
         }
         .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
-        /* ── RESPONSIVE ──────────────────────────────────────── */
         @media (max-width: 900px) {
             .editor-page { padding: 48px 48px; max-width: 100%; min-height: 400px; }
         }
@@ -547,7 +583,6 @@ class ShareActivity : AppCompatActivity() {
             .quick-access { display: none; }
         }
 
-        /* ── PRINT ───────────────────────────────────────────── */
         @media print {
             .title-bar, .quick-access, .ribbon, .status-bar, .toast { display: none !important; }
             .editor-wrap { padding: 0; background: #fff; }
@@ -558,7 +593,6 @@ class ShareActivity : AppCompatActivity() {
 <body>
 <div class="app-shell" id="appShell">
 
-    <!-- TITLE BAR (Word 2016 blue bar) -->
     <div class="title-bar">
         <button class="btn-save" id="btnSave" onclick="saveDocument()" title="Save (Ctrl+S)">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -573,7 +607,6 @@ class ShareActivity : AppCompatActivity() {
         </div>
     </div>
 
-    <!-- QUICK ACCESS TOOLBAR -->
     <div class="quick-access">
         <button class="qa-btn" onclick="document.execCommand('undo')" title="Undo (Ctrl+Z)">
             <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
@@ -583,9 +616,7 @@ class ShareActivity : AppCompatActivity() {
         </button>
     </div>
 
-    <!-- RIBBON TOOLBAR (Word 2016 style) -->
     <div class="ribbon" id="ribbon">
-        <!-- Clipboard group -->
         <div class="ribbon-group">
             <select id="headingSelect" onchange="applyHeading(this.value)" title="Styles">
                 <option value="p">Normal</option>
@@ -596,7 +627,6 @@ class ShareActivity : AppCompatActivity() {
             <span class="ribbon-group-label">Styles</span>
         </div>
 
-        <!-- Font group -->
         <div class="ribbon-group">
             <select id="fontSelect" onchange="applyFont(this.value)" title="Font">
                 $fontOptionsHtml
@@ -610,7 +640,6 @@ class ShareActivity : AppCompatActivity() {
             <span class="ribbon-group-label">Font</span>
         </div>
 
-        <!-- Paragraph group -->
         <div class="ribbon-group">
             <button class="tb" id="btnAlignLeft" onclick="align('left')" title="Align Left">
                 <svg viewBox="0 0 24 24"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
@@ -625,14 +654,12 @@ class ShareActivity : AppCompatActivity() {
         </div>
     </div>
 
-    <!-- EDITOR -->
     <div class="editor-wrap">
         <div class="editor-page" id="editor" contenteditable="true" spellcheck="true">
             <p>Loading…</p>
         </div>
     </div>
 
-    <!-- STATUS BAR (Word 2016 blue bottom) -->
     <div class="status-bar">
         <div class="status-bar-left">
             <span id="wordCount">Words: 0</span>
@@ -701,8 +728,33 @@ class ShareActivity : AppCompatActivity() {
         applyTheme(next);
     };
 
-    // Apply saved theme on load
     applyTheme(getStoredTheme());
+
+    // ── BUG FIX #13: Normalize HTML from contenteditable ───────────
+    // Different browsers produce different markup for Enter key:
+    // Chrome/Edge insert <div>, Safari inserts <br>, Firefox inserts <br>.
+    // This normalizer converts all block-level elements to <p> tags
+    // before saving, ensuring consistent HTML for the Android parser.
+    function normalizeEditorHtml(html) {
+        // Replace <div> wrappers with <p> tags
+        html = html.replace(/<div([^>]*)>/gi, '<p$1>');
+        html = html.replace(/<\/div>/gi, '</p>');
+
+        // Replace standalone <br> (not inside a <p>) with paragraph breaks
+        // First, handle <br><br> sequences (double line breaks)
+        html = html.replace(/<br\s*\/?>\s*<br\s*\/?>/gi, '</p><p>');
+
+        // Remove trailing <br> inside <p> tags (browser artifacts)
+        html = html.replace(/<br\s*\/?>\s*<\/p>/gi, '</p>');
+
+        // Ensure content is wrapped in <p> if it isn't already
+        // (handles bare text nodes at the top level)
+        if (html && !html.trim().startsWith('<')) {
+            html = '<p>' + html + '</p>';
+        }
+
+        return html;
+    }
 
     // ── Load content ───────────────────────────────────────────────
     function loadContent() {
@@ -734,7 +786,8 @@ class ShareActivity : AppCompatActivity() {
         btnSave.textContent = 'Saving…';
         saveStatusEl.textContent = 'Saving…';
 
-        var bodyHtml = editor.innerHTML;
+        // BUG FIX #13: Normalize the HTML before sending to the server
+        var bodyHtml = normalizeEditorHtml(editor.innerHTML);
         var title    = docTitle.value.trim();
         var fontName = fontSelect.value;
 
@@ -892,7 +945,6 @@ class ShareActivity : AppCompatActivity() {
         wordCountEl.textContent = 'Words: ' + words;
     }
 
-    // ── Keyboard shortcuts ─────────────────────────────────────────
     document.addEventListener('keydown', function(e) {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
@@ -928,13 +980,16 @@ class ShareActivity : AppCompatActivity() {
             return newFixedLengthResponse(Response.Status.OK, "text/html", html)
         }
 
-        // ── GET /readonly — the original read-only print view ────────
+        // ── GET /readonly ────────────────────────────────────────────
 
         private fun serveReadOnlyPage(): Response {
-            val book = runBlocking { database.bookDao().getBook(bookId) }
-                ?: return newFixedLengthResponse(
-                    Response.Status.NOT_FOUND, "text/html", "<h1>Book not found</h1>"
-                )
+            val book = runBlocking {
+                dbWriteMutex.withLock {
+                    database.bookDao().getBook(bookId)
+                }
+            } ?: return newFixedLengthResponse(
+                Response.Status.NOT_FOUND, "text/html", "<h1>Book not found</h1>"
+            )
 
             val fontName = book.fontName
             var googleFontUrl = ""

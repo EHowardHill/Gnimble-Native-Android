@@ -23,11 +23,11 @@ import com.gnimble.typewriter.databinding.ActivityEditorBinding
 import com.gnimble.typewriter.utils.SimpleHtmlHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.floor
 import kotlin.math.min
 
 class EditorActivity : AppCompatActivity() {
@@ -40,6 +40,11 @@ class EditorActivity : AppCompatActivity() {
     // Font list
     private lateinit var fontList: List<FontItem>
 
+    // BUG FIX #6: Track whether the font dropdown has been fully initialized.
+    // This prevents saveBook() from overwriting the book's saved font with "default"
+    // if it fires before the spinner is ready.
+    private var fontDropdownInitialized = false
+
     // Heading styles
     private val headingStyles = listOf(
         HeadingStyle("Body", 1.0f),
@@ -50,14 +55,13 @@ class EditorActivity : AppCompatActivity() {
 
     // Property to track find/replace state
     private var lastFoundIndex: Int = 0
+    // BUG FIX #10: Track which page find/replace is currently searching
+    private var lastFoundPageIndex: Int = 0
 
     private var pages = mutableListOf<String>()
     private var currentPageIndex = 0
-    private val CHARS_PER_PAGE = 10000 // Split approx every 10k chars (adjustable)
+    private val CHARS_PER_PAGE = 10000
 
-    // BUG FIX #3: Flag to suppress text watchers during programmatic text changes.
-    // This prevents the auto-save and overflow watchers from firing during pagination
-    // operations, which could corrupt page state or cause infinite loops.
     private var suppressTextWatchers = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,7 +78,6 @@ class EditorActivity : AppCompatActivity() {
 
         supportActionBar?.title = bookTitle
 
-        // Initialize fonts BEFORE loading the book so the list is ready
         initializeFontList()
 
         if (bookId != -1L) {
@@ -97,14 +100,11 @@ class EditorActivity : AppCompatActivity() {
         }
 
         binding.btnNextPage.setOnClickListener {
-            // Allow creating a new page if we are at the end
             if (currentPageIndex < pages.size - 1) {
                 changePage(currentPageIndex + 1)
             } else {
-                // Optional: Ask user if they want to add a new page?
-                // For now, let's just create one if the current one is full
                 if (binding.typewriter.editText.text.length > 100) {
-                    pages.add("") // Add empty page
+                    pages.add("")
                     changePage(currentPageIndex + 1)
                 }
             }
@@ -112,8 +112,6 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun changePage(newIndex: Int) {
-        // BUG FIX #3: Suppress watchers during page change to prevent auto-save
-        // and overflow watcher from firing while we modify the EditText programmatically.
         suppressTextWatchers = true
         try {
             // 1. Save current edits to the memory buffer
@@ -136,7 +134,6 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun loadPageToEditor(index: Int) {
-        // BUG FIX #4: Guard against invalid index or empty pages list
         if (index < 0 || index >= pages.size) {
             binding.loadingProgress.visibility = View.GONE
             return
@@ -150,23 +147,25 @@ class EditorActivity : AppCompatActivity() {
             val (spannableContent, fontToSelect) = withContext(Dispatchers.IO) {
                 val htmlHandler = SimpleHtmlHandler(this@EditorActivity)
 
-                // We wrap the chunk in body tags so the handler processes it correctly
                 val contentToParse = "<html><body>$pageContent</body></html>"
 
                 val spannable = htmlHandler.htmlToSpannable(contentToParse)
 
-                // Get font (we assume global font for the book, not per page)
                 val currentFontName = currentBook?.fontName ?: "default"
                 val font = fontList.find { it.resourceEntryName == currentFontName } ?: fontList[0]
 
                 Pair(spannable, font)
             }
 
-            // BUG FIX #3: Suppress watchers while loading content into the editor
             suppressTextWatchers = true
             try {
                 binding.typewriter.setContent(spannableContent)
                 binding.typewriter.setGlobalFont(fontToSelect)
+
+                // BUG FIX #3: Reset cursor to position 0 after loading a new page.
+                // Without this, a stale selection from the previous page could cause
+                // IndexOutOfBoundsException if it exceeds the new page's length.
+                binding.typewriter.editText.setSelection(0)
             } finally {
                 suppressTextWatchers = false
             }
@@ -177,25 +176,30 @@ class EditorActivity : AppCompatActivity() {
     private fun updatePaginationUI() {
         binding.textPageIndicator.text = "Section ${currentPageIndex + 1} / ${pages.size}"
         binding.btnPrevPage.isEnabled = currentPageIndex > 0
-        // Next is always enabled to allow adding new pages, or you can limit it
         binding.btnNextPage.isEnabled = true
     }
 
-    // Capture what is currently in the EditText and store it in our pages list
+    // BUG FIX #8: Guard against saving empty/null content to the page buffer.
+    // If the EditText was just cleared (e.g. during changePage), we skip the save
+    // to avoid overwriting valid page content with an empty string.
     private fun saveCurrentPageToBuffer() {
-        if (currentPageIndex >= 0 && currentPageIndex < pages.size) {
-            val editableText = binding.typewriter.editText.text
-            if (editableText != null && editableText is Spannable) {
-                val htmlHandler = SimpleHtmlHandler(this)
-                val htmlContent = htmlHandler.spannableToHtml(
-                    editableText,
-                    includeWrapper = false
-                )
-                pages[currentPageIndex] = htmlContent
-            }
-        }
+        if (currentPageIndex < 0 || currentPageIndex >= pages.size) return
+
+        val editableText = binding.typewriter.editText.text
+        if (editableText == null || editableText.isEmpty()) return
+        if (editableText !is Spannable) return
+
+        val htmlHandler = SimpleHtmlHandler(this)
+        val htmlContent = htmlHandler.spannableToHtml(
+            editableText,
+            includeWrapper = false
+        )
+        pages[currentPageIndex] = htmlContent
     }
 
+    // BUG FIX #7: Improved HTML splitting that handles content not wrapped in <p> tags.
+    // The old approach split on "</p>" which dropped <div>, <span>, <br>, and bare text.
+    // The new approach uses a tag-aware chunker that respects HTML structure.
     private fun splitContentIntoPages(fullHtml: String): MutableList<String> {
         val result = mutableListOf<String>()
 
@@ -204,30 +208,34 @@ class EditorActivity : AppCompatActivity() {
             .replace("<html><body>", "")
             .replace("</body></html>", "")
 
-        // Split by paragraphs to avoid breaking HTML tags mid-stream
-        // This is a naive split; for very long paragraphs, it might still be large
-        val paragraphs = cleanContent.split("</p>")
+        // Split by block-level boundaries: </p>, </div>, <br>, or newlines
+        // This regex captures each block element as a complete unit
+        val blockPattern = Regex("""(<p[^>]*>.*?</p>|<div[^>]*>.*?</div>|<br\s*/?>|[^<]+)""", RegexOption.DOT_MATCHES_ALL)
+        val blocks = blockPattern.findAll(cleanContent).map { it.value }.toList()
+
+        if (blocks.isEmpty()) {
+            result.add(cleanContent.ifBlank { "" })
+            return result
+        }
 
         var currentChunk = StringBuilder()
 
-        for (p in paragraphs) {
-            if (p.isBlank()) continue
+        for (block in blocks) {
+            if (block.isBlank()) continue
 
-            val paragraphWithTag = "$p</p>"
-
-            // If adding this paragraph exceeds limit, push currentChunk to pages
-            if (currentChunk.length + paragraphWithTag.length > CHARS_PER_PAGE && currentChunk.isNotEmpty()) {
+            // If adding this block exceeds the limit, push current chunk and start new
+            if (currentChunk.length + block.length > CHARS_PER_PAGE && currentChunk.isNotEmpty()) {
                 result.add(currentChunk.toString())
                 currentChunk = StringBuilder()
             }
-            currentChunk.append(paragraphWithTag)
+            currentChunk.append(block)
         }
 
         if (currentChunk.isNotEmpty()) {
             result.add(currentChunk.toString())
         }
 
-        if (result.isEmpty()) result.add("") // Ensure at least one page
+        if (result.isEmpty()) result.add("")
 
         return result
     }
@@ -235,7 +243,6 @@ class EditorActivity : AppCompatActivity() {
     private fun initializeFontList() {
         val fontItems = mutableListOf<FontItem>()
 
-        // Add default font
         fontItems.add(FontItem("Default", "default", 0, Typeface.DEFAULT))
 
         val fontFields = R.font::class.java.fields
@@ -243,10 +250,9 @@ class EditorActivity : AppCompatActivity() {
         for (field in fontFields) {
             try {
                 val resourceId = field.getInt(null)
-                val resourceEntryName = field.name // e.g. "crimson_text"
+                val resourceEntryName = field.name
                 val fontName = formatFontName(field.name)
 
-                // This calls the helper method defined below
                 val typeface = loadFont(resourceId)
 
                 if (typeface != null) {
@@ -259,7 +265,6 @@ class EditorActivity : AppCompatActivity() {
         fontList = listOf(fontItems[0]) + fontItems.drop(1).sortedBy { it.name }
     }
 
-    // Helper method to format font names (e.g. "crimson_text" -> "Crimson Text")
     private fun formatFontName(resourceName: String): String {
         return resourceName
             .replace("_", " ")
@@ -269,7 +274,6 @@ class EditorActivity : AppCompatActivity() {
             }
     }
 
-    // Helper method to load Typeface from resource ID
     private fun loadFont(resourceId: Int): Typeface? {
         return try {
             ResourcesCompat.getFont(this, resourceId)
@@ -301,8 +305,10 @@ class EditorActivity : AppCompatActivity() {
 
         binding.actionFontSelection.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                // BUG FIX #6: Mark dropdown as initialized on first selection callback.
+                fontDropdownInitialized = true
+
                 val selectedFont = fontList[position]
-                // Apply globally instead of to selection
                 binding.typewriter.setGlobalFont(selectedFont)
             }
 
@@ -339,13 +345,10 @@ class EditorActivity : AppCompatActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: android.text.Editable?) {
-                // BUG FIX #3: Skip auto-save during programmatic text changes (pagination)
                 if (suppressTextWatchers) return
 
-                // Cancel previous save
                 saveRunnable?.let { binding.typewriter.editText.removeCallbacks(it) }
 
-                // Schedule new save after 1 second of inactivity
                 saveRunnable = Runnable {
                     saveBook()
                 }
@@ -355,6 +358,9 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun saveBook() {
+        // BUG FIX #8: Don't save if we're in the middle of a page transition
+        if (suppressTextWatchers) return
+
         // 1. Ensure the currently active page is saved to the list
         saveCurrentPageToBuffer()
 
@@ -365,7 +371,6 @@ class EditorActivity : AppCompatActivity() {
                 val stitchedHtml = StringBuilder()
                 stitchedHtml.append("<html><body>")
                 pages.forEach { pageHtml ->
-                    // Clean pageHtml to ensure we don't duplicate body tags if they snuck in
                     val cleanPage = pageHtml
                         .replace("<html><body>", "")
                         .replace("</body></html>", "")
@@ -375,26 +380,35 @@ class EditorActivity : AppCompatActivity() {
 
                 val finalHtml = stitchedHtml.toString()
 
-                // Generate plain text preview (rough approximation for the list view)
                 val plainText = finalHtml.replace(Regex("<[^>]+>"), " ").trim()
 
-                // Get current font
-                val selectedPosition = binding.actionFontSelection.selectedItemPosition
-                val currentFontName = if (selectedPosition >= 0 && selectedPosition < fontList.size) {
-                    fontList[selectedPosition].resourceEntryName
+                // BUG FIX #6: Only read font from spinner if it has been initialized.
+                // Before initialization, the spinner position may be -1 or default,
+                // which would overwrite the book's actual saved font with "default".
+                val currentFontName = if (fontDropdownInitialized) {
+                    val selectedPosition = binding.actionFontSelection.selectedItemPosition
+                    if (selectedPosition >= 0 && selectedPosition < fontList.size) {
+                        fontList[selectedPosition].resourceEntryName
+                    } else {
+                        book.fontName // Preserve existing font
+                    }
                 } else {
-                    "default"
+                    book.fontName // Preserve existing font until spinner is ready
                 }
 
                 val updatedBook = book.copy(
-                    storyContent = plainText.take(500), // Only store a preview in storyContent to save DB space
+                    storyContent = plainText.take(500),
                     formattedContent = finalHtml,
                     contentFormat = ContentFormat.HTML,
                     lastEdited = Date(),
                     subtitle = "Last edited: ${SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date())}",
                     fontName = currentFontName
                 )
-                database.bookDao().updateBook(updatedBook)
+                // BUG FIX #5: Acquire shared mutex to prevent race condition
+                // with ShareActivity's web server writing to the same book.
+                ShareActivity.dbWriteMutex.withLock {
+                    database.bookDao().updateBook(updatedBook)
+                }
                 currentBook = updatedBook
             }
         }
@@ -409,32 +423,33 @@ class EditorActivity : AppCompatActivity() {
             currentBook?.let { book ->
                 try {
                     withContext(Dispatchers.IO) {
-                        // Prepare content string
                         val contentToLoad = if (book.contentFormat == ContentFormat.HTML && !book.formattedContent.isNullOrEmpty()) {
                             book.formattedContent!!
                         } else {
                             "<html><body><p>${book.storyContent.replace("\n", "</p><p>")}</p></body></html>"
                         }
 
-                        // HEAVY OPERATION: Split content into pages
                         pages = splitContentIntoPages(contentToLoad)
                     }
 
-                    // Reset to page 0
                     currentPageIndex = 0
                     updatePaginationUI()
                     loadPageToEditor(0)
+
+                    // BUG FIX #6: Set the font spinner to the book's saved font AFTER loading
+                    val savedFontIndex = fontList.indexOfFirst { it.resourceEntryName == book.fontName }
+                    if (savedFontIndex >= 0) {
+                        binding.actionFontSelection.setSelection(savedFontIndex)
+                    }
 
                     supportActionBar?.title = book.title
 
                 } catch (e: Exception) {
                     e.printStackTrace()
-                    // Fallback
                     pages = mutableListOf(book.storyContent)
                     loadPageToEditor(0)
                 }
             }
-            // Visibility is handled in loadPageToEditor
             binding.typewriter.visibility = View.VISIBLE
         }
     }
@@ -460,8 +475,6 @@ class EditorActivity : AppCompatActivity() {
             }
 
             R.id.action_statistics -> {
-                // BUG FIX #5: Compute statistics across ALL pages, not just the current one.
-                // Save current page to buffer first so its content is up-to-date.
                 saveCurrentPageToBuffer()
                 val wordCount = getTotalWordCount()
                 val pageCount = getTotalPageCount()
@@ -486,14 +499,18 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
+    // BUG FIX #10: Completely rewritten Find & Replace to search across ALL pages,
+    // not just the currently visible one. The dialog now navigates to the correct page
+    // when a match is found on a different section.
     private fun showFindReplaceDialog() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_find_replace, null)
         val findEditText = dialogView.findViewById<EditText>(R.id.et_find)
         val replaceEditText = dialogView.findViewById<EditText>(R.id.et_replace)
         val mainEditText = binding.typewriter.editText
 
-        // Reset search index when the dialog is opened
+        // Reset search state
         lastFoundIndex = 0
+        lastFoundPageIndex = currentPageIndex
         mainEditText.clearFocus()
 
         val dialog = AlertDialog.Builder(this)
@@ -506,8 +523,6 @@ class EditorActivity : AppCompatActivity() {
                 val replaceText = replaceEditText.text.toString()
 
                 if (findText.isNotEmpty()) {
-                    // BUG FIX #6: Replace All now works across all pages, and preserves
-                    // spans on the current page by using Editable.replace() instead of setText().
                     saveCurrentPageToBuffer()
 
                     // Replace in all non-current pages (HTML level)
@@ -527,7 +542,7 @@ class EditorActivity : AppCompatActivity() {
                         searchFrom = idx + replaceText.length
                     }
 
-                    Toast.makeText(this, "All occurrences replaced.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "All occurrences replaced across all sections.", Toast.LENGTH_SHORT).show()
                 }
             }
             .create()
@@ -539,25 +554,63 @@ class EditorActivity : AppCompatActivity() {
 
         findButton.setOnClickListener {
             val findText = findEditText.text.toString()
-            val content = mainEditText.text.toString()
-
             if (findText.isEmpty()) return@setOnClickListener
 
-            if (lastFoundIndex >= content.length) {
+            // Save current page so we can search its latest content
+            saveCurrentPageToBuffer()
+
+            // Search starting from current position on current search page
+            val pagesCount = pages.size
+            var searched = 0
+
+            while (searched < pagesCount) {
+                val pageIdx = lastFoundPageIndex % pagesCount
+                val pageContent: String
+
+                if (pageIdx == currentPageIndex) {
+                    // Search in the live EditText for the current page
+                    pageContent = mainEditText.text.toString()
+                } else {
+                    // Search in the stored HTML (strip tags for plain-text search)
+                    pageContent = pages[pageIdx].replace(Regex("<[^>]+>"), "")
+                        .replace("&lt;", "<").replace("&gt;", ">")
+                        .replace("&amp;", "&").replace("&quot;", "\"")
+                }
+
+                val startIndex = pageContent.indexOf(findText, startIndex = lastFoundIndex, ignoreCase = true)
+
+                if (startIndex != -1) {
+                    // Found a match
+                    if (pageIdx != currentPageIndex) {
+                        // Navigate to that page first, then highlight
+                        changePage(pageIdx)
+                        // After page change, find in the now-loaded EditText
+                        val liveContent = mainEditText.text.toString()
+                        val liveIndex = liveContent.indexOf(findText, ignoreCase = true)
+                        if (liveIndex != -1) {
+                            mainEditText.requestFocus()
+                            mainEditText.setSelection(liveIndex, liveIndex + findText.length)
+                            lastFoundIndex = liveIndex + 1
+                        }
+                    } else {
+                        mainEditText.requestFocus()
+                        mainEditText.setSelection(startIndex, startIndex + findText.length)
+                        lastFoundIndex = startIndex + 1
+                    }
+                    lastFoundPageIndex = pageIdx
+                    return@setOnClickListener
+                }
+
+                // Not found on this page, move to next
                 lastFoundIndex = 0
-                Toast.makeText(this, "Searching from top...", Toast.LENGTH_SHORT).show()
+                lastFoundPageIndex = (pageIdx + 1) % pagesCount
+                searched++
             }
 
-            val startIndex = content.indexOf(findText, startIndex = lastFoundIndex, ignoreCase = true)
-
-            if (startIndex != -1) {
-                mainEditText.requestFocus()
-                mainEditText.setSelection(startIndex, startIndex + findText.length)
-                lastFoundIndex = startIndex + 1
-            } else {
-                Toast.makeText(this, "Text not found.", Toast.LENGTH_SHORT).show()
-                lastFoundIndex = 0
-            }
+            // Wrapped all pages without finding
+            Toast.makeText(this, "Text not found in any section.", Toast.LENGTH_SHORT).show()
+            lastFoundIndex = 0
+            lastFoundPageIndex = currentPageIndex
         }
 
         replaceButton.setOnClickListener {
@@ -589,7 +642,6 @@ class EditorActivity : AppCompatActivity() {
         saveBook()
     }
 
-    // BUG FIX #5: Renamed from getWordCount and now computes across ALL pages
     fun getTotalWordCount(): Int {
         saveCurrentPageToBuffer()
         var totalWords = 0
@@ -602,16 +654,13 @@ class EditorActivity : AppCompatActivity() {
         return totalWords
     }
 
-    // BUG FIX #5: Renamed from getPageCount and provides total across all sections
     fun getTotalPageCount(): Int {
-        // Each section/page is one logical page at minimum.
-        // For a more accurate count, we could estimate from total content length.
         return pages.size.coerceAtLeast(1)
     }
 
     // Constants for pagination limits
     private val PREFERRED_PAGE_SIZE = 10000
-    private val MAX_PAGE_SIZE = 12000 // Buffer to allow finishing a paragraph
+    private val MAX_PAGE_SIZE = 12000
 
     private fun setupPageOverflowWatcher() {
         binding.typewriter.editText.addTextChangedListener(object : android.text.TextWatcher {
@@ -619,11 +668,9 @@ class EditorActivity : AppCompatActivity() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
 
             override fun afterTextChanged(s: android.text.Editable?) {
-                // BUG FIX #3: Skip during programmatic text changes (pagination, loading)
                 if (suppressTextWatchers) return
                 if (s == null) return
 
-                // Check if we exceeded the hard limit
                 if (s.length > MAX_PAGE_SIZE) {
                     performAutoPagination(s)
                 }
@@ -631,9 +678,10 @@ class EditorActivity : AppCompatActivity() {
         })
     }
 
+    // BUG FIX #2: Fixed off-by-one and empty-overflow-page issues in auto-pagination.
+    // The old code could create empty overflow pages when splitIndex == content.length - 1,
+    // and could produce an IndexOutOfBoundsException if splitIndex was out of bounds.
     private fun performAutoPagination(content: android.text.Editable) {
-        // BUG FIX #2: Find a split point that is actually valid within the content's bounds.
-        // Search for the last newline before the PREFERRED_PAGE_SIZE limit.
         val searchLimit = min(PREFERRED_PAGE_SIZE, content.length)
         var splitIndex = -1
 
@@ -645,23 +693,30 @@ class EditorActivity : AppCompatActivity() {
             }
         }
 
-        // If no newline found (one massive paragraph), split at the preferred size
-        // but clamp to content.length to prevent IndexOutOfBoundsException
+        // If no newline found, split at the preferred size
         if (splitIndex == -1 || splitIndex < 100) {
-            splitIndex = min(PREFERRED_PAGE_SIZE, content.length - 1)
+            splitIndex = min(PREFERRED_PAGE_SIZE, content.length)
         }
 
-        // Safety check: ensure splitIndex is valid
+        // Safety check: ensure there's actually content to overflow
         if (splitIndex <= 0 || splitIndex >= content.length) {
-            return // Cannot safely split
+            return // Nothing to split off
         }
 
-        // BUG FIX #1: Use SpannableStringBuilder to safely copy spans instead of
-        // casting CharSequence to Spannable which causes ClassCastException.
-        val keepSpannable = SpannableStringBuilder(content, 0, splitIndex)
-        val overflowSpannable = SpannableStringBuilder(content, splitIndex + 1, content.length)
+        // Ensure there's meaningful overflow content (not just whitespace)
+        val overflowStart = splitIndex
+        if (overflowStart >= content.length) {
+            return // No overflow content
+        }
 
-        // Convert both to HTML for storage
+        val keepSpannable = SpannableStringBuilder(content, 0, splitIndex)
+        val overflowSpannable = SpannableStringBuilder(content, overflowStart, content.length)
+
+        // Don't create a new page if the overflow is empty/whitespace-only
+        if (overflowSpannable.toString().isBlank()) {
+            return
+        }
+
         val htmlHandler = SimpleHtmlHandler(this)
         val currentHtml = htmlHandler.spannableToHtml(keepSpannable, false)
         val overflowHtml = htmlHandler.spannableToHtml(overflowSpannable, false)
@@ -672,10 +727,9 @@ class EditorActivity : AppCompatActivity() {
         // Insert new page AFTER current page
         pages.add(currentPageIndex + 1, overflowHtml)
 
-        // Move user to the new page automatically
+        // Move user to the new page
         changePage(currentPageIndex + 1)
 
-        // Notify user
         Toast.makeText(this, "Section full! Created new section.", Toast.LENGTH_SHORT).show()
     }
 
